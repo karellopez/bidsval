@@ -1,0 +1,166 @@
+"""Validate a dataset, a subject, or a single file.
+
+These are the orchestration entry points. Each resolves a schema, indexes the
+files, builds a context per file, and runs the rule engine. They return typed
+results (:class:`~bidsval.report.ValidationReport`,
+:class:`~bidsval.report.FileVerdict`) and never raise on an invalid dataset -
+problems are recorded as findings.
+
+Granularity:
+
+* :func:`validate` - a whole dataset.
+* :func:`validate_subject` - one subject within a dataset.
+* :func:`validate_file` - one file (with the rest of the dataset available for
+  inheritance and existence checks).
+"""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+from .context import ContextBuilder
+from .files import BIDSFile, FileTree
+from .issues import Issue, Severity
+from .report import FileVerdict, ValidationReport
+from .rules import apply_rules, validate_basename
+from .rules.bespoke import bespoke_checks
+from .schema import SchemaSelector, bids_version, resolve, schema_version
+
+
+def validate(
+    root: str | Path,
+    *,
+    schema: SchemaSelector = None,
+    read_headers: bool = False,
+    max_rows: int = 1000,
+    subjects: list[str] | None = None,
+) -> ValidationReport:
+    """Validate the BIDS dataset at ``root``.
+
+    ``schema`` selects the schema version (default: the bundled default).
+    ``read_headers`` enables NIfTI header checks (needs nibabel). ``subjects``,
+    if given, restricts validation to those ``sub-*`` directories.
+    """
+    schema_ns = resolve(schema)
+    tree = FileTree(root)
+    report = ValidationReport(
+        dataset_root=Path(root),
+        bids_version=bids_version(schema_ns),
+        schema_version=schema_version(schema_ns),
+    )
+
+    _check_dataset_description(tree, report)
+    if not tree.subjects():
+        report.dataset_issues.add(
+            Issue(
+                code="NO_SUBJECTS",
+                severity=Severity.WARNING,
+                message="no sub-* directories found under the dataset root",
+            )
+        )
+
+    builder = ContextBuilder(schema_ns, tree, read_headers=read_headers, max_rows=max_rows)
+    files = tree.files()
+    if subjects is not None:
+        wanted = set(subjects)
+        files = [f for f in files if f.relpath.split("/", 1)[0] in wanted]
+
+    for bids_file in files:
+        report.files.append(_validate_one(schema_ns, builder, bids_file))
+
+    report.recompute()
+    return report
+
+
+def validate_subject(
+    root: str | Path,
+    subject: str,
+    *,
+    schema: SchemaSelector = None,
+    read_headers: bool = False,
+    max_rows: int = 1000,
+) -> ValidationReport:
+    """Validate a single subject. ``subject`` may be given with or without the ``sub-`` prefix."""
+    sub_dir = subject if subject.startswith("sub-") else f"sub-{subject}"
+    return validate(
+        root,
+        schema=schema,
+        read_headers=read_headers,
+        max_rows=max_rows,
+        subjects=[sub_dir],
+    )
+
+
+def validate_file(
+    root: str | Path,
+    relpath: str,
+    *,
+    schema: SchemaSelector = None,
+    read_headers: bool = False,
+    max_rows: int = 1000,
+) -> FileVerdict:
+    """Validate one file within a dataset.
+
+    The rest of the dataset is indexed so inheritance and existence checks still
+    work, but only the named file's findings are returned.
+    """
+    schema_ns = resolve(schema)
+    tree = FileTree(root)
+    bids_file = tree.get(relpath)
+    if bids_file is None:
+        verdict = FileVerdict(path=Path(relpath))
+        verdict.issues.append(
+            Issue(
+                code="FILE_NOT_FOUND",
+                severity=Severity.ERROR,
+                location=relpath,
+                message=f"{relpath} is not under the dataset root",
+            )
+        )
+        verdict.recompute_severity()
+        return verdict
+    builder = ContextBuilder(schema_ns, tree, read_headers=read_headers, max_rows=max_rows)
+    return _validate_one(schema_ns, builder, bids_file)
+
+
+# ---------------------------------------------------------------------------
+# Internals
+# ---------------------------------------------------------------------------
+
+
+def _validate_one(schema_ns, builder: ContextBuilder, bids_file: BIDSFile) -> FileVerdict:
+    verdict = FileVerdict(path=Path(bids_file.relpath))
+    try:
+        context = builder.build(bids_file)
+        verdict.issues.extend(bespoke_checks(bids_file, context, read_headers=builder.read_headers))
+        verdict.issues.extend(validate_basename(schema_ns, context, bids_file.name))
+        verdict.issues.extend(apply_rules(schema_ns, context))
+    except Exception as error:  # never let one file abort the whole run
+        verdict.issues.append(
+            Issue(
+                code="bidsval.internal_error",
+                severity=Severity.WARNING,
+                location=bids_file.relpath,
+                message=f"could not fully validate this file: {error}",
+            )
+        )
+    verdict.recompute_severity()
+    return verdict
+
+
+def _check_dataset_description(tree: FileTree, report: ValidationReport) -> None:
+    # Only the file-missing case is handled here; the required/recommended fields
+    # of dataset_description.json come from the schema's dataset_metadata rules
+    # (evaluated when the file itself is validated), so nothing is hardcoded.
+    if tree.get("dataset_description.json") is None:
+        report.dataset_issues.add(
+            Issue(
+                code="MISSING_DATASET_DESCRIPTION",
+                severity=Severity.ERROR,
+                location="dataset_description.json",
+                message="dataset_description.json is missing at the dataset root",
+            )
+        )
+
+
+__all__ = ["validate", "validate_subject", "validate_file"]

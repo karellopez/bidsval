@@ -1,0 +1,71 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "bidsval"
+version = "0.0.1"
+description = "A schema-driven, pydantic-typed, in-process BIDS validator."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "bidsval contributors" }]
+keywords = ["BIDS", "validation", "neuroimaging", "schema", "pydantic"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering",
+]
+
+# Core stays deliberately small: the schema (and its expression-language parser)
+# come from bidsschematools; results are typed with pydantic. Heavier readers
+# used for content checks (tier 3) are optional extras so the base install is lean.
+dependencies = [
+    "bidsschematools>=1.0",
+    "pydantic>=2",
+]
+
+[project.optional-dependencies]
+content = ["nibabel>=5", "pandas>=2"]   # tier-3 NIfTI / TSV content readers
+m-eeg = ["mne>=1.6"]                     # tier-3 EEG/MEG recording readers
+dev = ["pytest>=7", "ruff>=0.1"]
+
+[project.scripts]
+bidsval = "bidsval.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/karellopez/bidsval"
+Repository = "https://github.com/karellopez/bidsval"
+Issues = "https://github.com/karellopez/bidsval/issues"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+# Ship the bundled schema(s) so the default schema is pinned to a known BIDS
+# version and works fully offline, independent of the installed bidsschematools.
+bidsval = ["schema/bundled/*.json"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+# A pragmatic, widely-used set: pycodestyle errors, pyflakes, isort, pyupgrade,
+# and a few bugbear checks. Kept intentionally modest so the rules help rather
+# than nag.
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.ruff.lint.per-file-ignores]
+# The HTML renderer embeds a CSS/HTML template; long template lines are fine.
+"src/bidsval/render/html.py" = ["E501"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
