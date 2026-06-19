@@ -79,7 +79,8 @@ and cached. One argument selects the schema; everything downstream is unchanged:
 bidsval.validate("/data", schema="1.10.0")               # a bundled version
 bidsval.validate("/data", schema="latest")               # the development tip (fetched)
 bidsval.validate("/data", schema="https://.../schema.json")  # any URL (fetched + cached)
-bidsval.validate("/data", schema="/path/to/schema.json") # a local or forked schema
+bidsval.validate("/data", schema="/path/to/schema.json") # a local dereferenced schema.json
+bidsval.validate("/data", schema="/path/to/src/schema")  # a YAML schema source directory
 bidsval.available_versions()                             # bundled: ['1.8.0', ... '1.11.1']
 ```
 
