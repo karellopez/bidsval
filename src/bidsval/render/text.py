@@ -33,4 +33,9 @@ def to_text(report: ValidationReport) -> str:
     lines.append("")
     lines.append(f"{counts.get('error', 0)} error(s), {counts.get('warning', 0)} warning(s)")
     lines.append("VALID" if report.is_valid else "INVALID")
+    for name, deriv in report.derivatives.items():
+        verdict = "VALID" if deriv.is_valid else "INVALID"
+        errs = deriv.counts.get("error", 0)
+        warns = deriv.counts.get("warning", 0)
+        lines.append(f"  derivatives/{name}: {verdict} ({errs} error(s), {warns} warning(s))")
     return "\n".join(lines)

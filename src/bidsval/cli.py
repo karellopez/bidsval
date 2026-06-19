@@ -256,6 +256,11 @@ def build_parser() -> argparse.ArgumentParser:
         "if nibabel is not installed these checks are skipped anyway.",
     )
     validate_cmd.add_argument(
+        "--recursive",
+        action="store_true",
+        help="also validate BIDS datasets under derivatives/ (each on its own).",
+    )
+    validate_cmd.add_argument(
         "--output-type",
         default="text",
         metavar="TYPES",
@@ -328,7 +333,11 @@ def _run_validate(args: argparse.Namespace) -> int:
         subjects = [sub]
     try:
         report = run_validate(
-            args.dataset, schema=args.schema, read_headers=not args.no_headers, subjects=subjects
+            args.dataset,
+            schema=args.schema,
+            read_headers=not args.no_headers,
+            subjects=subjects,
+            recursive=args.recursive,
         )
     except SchemaNotAvailable as error:
         print(f"error: {error}", file=sys.stderr)

@@ -44,13 +44,15 @@ def validate(
     read_headers: bool = True,
     max_rows: int = 1000,
     subjects: list[str] | None = None,
+    recursive: bool = False,
 ) -> ValidationReport:
     """Validate the BIDS dataset at ``root``.
 
     ``schema`` selects the schema version (default: the bundled default).
     ``read_headers`` reads NIfTI headers for header checks (default on, needs
     nibabel; set False to skip for speed). ``subjects``, if given, restricts
-    validation to those ``sub-*`` directories.
+    validation to those ``sub-*`` directories. ``recursive`` also validates any
+    BIDS-conformant datasets under ``derivatives/`` (each on its own).
     """
     schema_ns = resolve(schema)
     tree = _file_tree(root, schema_ns)
@@ -96,7 +98,34 @@ def validate(
     report.dataset_issues.extend(dataset_checks(tree, files, viewed_json, viewed_stimuli))
 
     report.recompute()
+
+    if recursive:
+        _validate_derivatives(root, report, schema, read_headers, max_rows)
+
     return report
+
+
+def _validate_derivatives(
+    root: str | Path,
+    report: ValidationReport,
+    schema: SchemaSelector,
+    read_headers: bool,
+    max_rows: int,
+) -> None:
+    """Validate each BIDS-conformant dataset under ``derivatives/`` on its own."""
+    deriv_root = Path(root) / "derivatives"
+    if not deriv_root.is_dir():
+        return
+    for sub in sorted(p for p in deriv_root.iterdir() if p.is_dir()):
+        if not (sub / "dataset_description.json").is_file():
+            continue  # not a BIDS derivative dataset; skip
+        report.derivatives[sub.name] = validate(
+            sub,
+            schema=schema,
+            read_headers=read_headers,
+            max_rows=max_rows,
+            recursive=True,
+        )
 
 
 def validate_subject(

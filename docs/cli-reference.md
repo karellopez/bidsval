@@ -38,7 +38,7 @@ Validity always depends on whether there are error-level findings.
 Validate a BIDS dataset against the schema and report errors and warnings.
 
 ```
-bidsval validate PATH [--schema SELECTOR] [--subject SUB] [--no-headers]
+bidsval validate PATH [--schema SELECTOR] [--subject SUB] [--no-headers] [--recursive]
                       [--output-type TYPES] [--out-dir DIR] [--show LEVELS]
 ```
 
@@ -59,6 +59,7 @@ Warnings flag recommended-but-missing metadata and do not affect validity.
 | `--schema SELECTOR` | bundled latest | which schema to validate against. A BIDS version (e.g. `1.11.1`), `latest`, a URL, a local `schema.json`, or a YAML schema source directory. Run `bidsval schema` to list bundled versions. See [schema selection](schema-selection.md). |
 | `--subject SUB` | all subjects | validate only this subject. Accepts `sub-01` or just `01` (the `sub-` prefix is added if missing). Files outside that subject are skipped. |
 | `--no-headers` | (headers on) | skip NIfTI header checks. Headers are read by default (needs `nibabel`; skipped automatically if it is not installed). Pass this to validate faster on large datasets. |
+| `--recursive` | off | also validate every BIDS dataset under `derivatives/` (each on its own); results are attached to the report's `derivatives`. |
 | `--output-type TYPES` | `text` | comma-separated output formats: `text`, `json`, `sarif`, `html`, or `all`. Selecting more than one requires `--out-dir`. See [output formats](output-formats.md). |
 | `--out-dir DIR` | (stdout) | write reports into this directory (created if needed), one `report.<ext>` per format. Required when more than one format is selected; a single format prints to stdout. |
 | `--show LEVELS` | `error,warning` | severities to display: any of `error`, `warning`, `ignore`, or `all` (comma-separated). Filters the output only; it does not change validity or the exit code. |

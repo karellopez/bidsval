@@ -37,7 +37,7 @@ def to_dict(report: ValidationReport) -> dict[str, Any]:
     issues = [_issue_dict(i) for i in report.dataset_issues.issues]
     for verdict in report.files:
         issues.extend(_issue_dict(i) for i in verdict.issues)
-    return {
+    out: dict[str, Any] = {
         "bidsvalVersion": __version__,
         "bidsVersion": report.bids_version,
         "schemaVersion": report.schema_version,
@@ -46,6 +46,9 @@ def to_dict(report: ValidationReport) -> dict[str, Any]:
         "counts": report.counts,
         "issues": issues,
     }
+    if report.derivatives:
+        out["derivatives"] = {name: to_dict(deriv) for name, deriv in report.derivatives.items()}
+    return out
 
 
 def to_json(report: ValidationReport, *, indent: int | None = 2) -> str:

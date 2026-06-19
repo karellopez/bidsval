@@ -44,6 +44,8 @@ class ValidationReport(BaseModel):
     counts: dict[str, int] = Field(default_factory=lambda: {"error": 0, "warning": 0, "ignore": 0})
     dataset_issues: DatasetIssues = Field(default_factory=DatasetIssues)
     files: list[FileVerdict] = Field(default_factory=list)
+    # Nested BIDS derivative datasets, validated on their own (only when recursive).
+    derivatives: dict[str, ValidationReport] = Field(default_factory=dict)
 
     def recompute(self) -> None:
         """Refresh :attr:`severity` and :attr:`counts` from current findings.
@@ -86,6 +88,9 @@ class ValidationReport(BaseModel):
                 kept.files.append(FileVerdict(path=verdict.path, issues=keep))
         kept.recompute()
         return kept
+
+
+ValidationReport.model_rebuild()  # resolve the self-referential ``derivatives`` field
 
 
 def _highest(severities: list[Severity]) -> Severity | None:
