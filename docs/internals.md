@@ -329,8 +329,8 @@ that the design leans on, not a convenience:
 These read the *contents* of files, as opposed to just their names:
 
 - **nibabel** reads NIfTI image headers (the small block of numbers at the start of
-  a `.nii` / `.nii.gz` file describing its dimensions and orientation). Used with
-  `--headers`.
+  a `.nii` / `.nii.gz` file describing its dimensions and orientation). Read by
+  default; pass `--no-headers` to skip.
 - **pandas** reads TSV tables (tab-separated value files such as `events.tsv` or
   `participants.tsv`) into columns.
 - **mne** reads EEG / MEG / iEEG recordings.
@@ -516,7 +516,7 @@ flowchart TD
     F --> SIDE["merged sidecar<br/>(the inheritance principle)"]
     F --> JSONC["json (if the file is a .json)"]
     F --> COLS["columns (if the file is a .tsv)"]
-    F --> NIFTI["nifti_header (if --headers and a .nii*)"]
+    F --> NIFTI["nifti_header (.nii*, read by default)"]
     F --> ASSOC["associated files<br/>(events, bval, channels, ...)"]
     PARSE --> CTX["the per-file context (a dict)"]
     DT --> CTX
@@ -613,7 +613,7 @@ run; the rule that needed the content simply does not fire.
 - `load_columns` uses pandas. `participants.tsv` and `*_scans.tsv` are read in full
   (they feed "are these exactly the right rows" checks); other tables are read up to
   a row cap (default 1000) for speed.
-- `load_nifti_header` uses nibabel, and only runs with `--headers`.
+- `load_nifti_header` uses nibabel; it runs by default (pass `--no-headers` to skip).
 
 ### The `exists` helper
 
@@ -792,7 +792,7 @@ reported more helpfully (with an explanation and a machine-actionable repair hin
 
 - **`EMPTY_FILE`** (error): a 0-byte file exists but holds no data. Skipped on a
   symlink (an unfetched placeholder has no local content to judge).
-- **`NIFTI_HEADER_UNREADABLE`** (warning): only with `--headers`, when the NIfTI
+- **`NIFTI_HEADER_UNREADABLE`** (warning): when headers are read (the default), if the NIfTI
   header could not be read. Framed as a readability issue, not necessarily a BIDS
   violation.
 
@@ -920,7 +920,7 @@ means remembering a result so the same work is not repeated.)
 
 The file index records paths only; **content is never read until a rule needs it**
 (this is *laziness*). JSON is parsed on demand, table columns and NIfTI headers only
-when a file of that kind is validated (and headers only with `--headers`). Big tables
+when a file of that kind is validated (headers are read by default). Big tables
 are bounded: most are read up to a row cap (default 1000), while `participants.tsv`
 and `*_scans.tsv` are read in full because they feed "are these exactly the right
 rows" checks.
@@ -994,7 +994,11 @@ Every code bidsval can report, where it comes from, and its severity.
 | `FILE_NOT_FOUND` | error | `validate.py` | a file passed to `validate_file` is not under the root |
 | `bidsval.internal_error` | warning | `validate.py` | an unexpected error while validating one file (the run continues) |
 | `EMPTY_FILE` | error | `rules/bespoke.py` | a 0-byte file |
-| `NIFTI_HEADER_UNREADABLE` | warning | `rules/bespoke.py` | the NIfTI header could not be read (with `--headers`) |
+| `NIFTI_HEADER_UNREADABLE` | warning | `rules/bespoke.py` | the NIfTI header could not be read (headers are read by default; `--no-headers` to skip) |
+| `CASE_COLLISION` | error | `rules/dataset_checks.py` | two files differ only by letter case |
+| `UNUSED_STIMULUS` | warning | `rules/dataset_checks.py` | a file in `stimuli/` is referenced by no events.tsv |
+| `TSV_ADDITIONAL_COLUMNS_MUST_DEFINE` | error | `rules/tables.py` | an extra column is not documented in the sidecar (where the rule requires it) |
+| `TSV_PSEUDO_AGE_DEPRECATED` | warning | `rules/tables.py` | the deprecated `89+` value in an `age` column |
 | `JSON_INVALID` | error | `rules/integrity.py` | a `.json` file is not valid JSON |
 | `JSON_NOT_AN_OBJECT` | error | `rules/integrity.py` | a `.json` file does not contain a single object |
 | `INVALID_FILE_ENCODING` | error | `rules/integrity.py` | a `.json` file is not valid UTF-8 text |

@@ -25,6 +25,7 @@ from .issues import Issue, Severity
 from .report import FileVerdict, ValidationReport
 from .rules import apply_rules
 from .rules.bespoke import bespoke_checks
+from .rules.dataset_checks import collect_viewed, dataset_checks
 from .rules.filenames import filename_checks
 from .rules.integrity import integrity_checks
 from .schema import SchemaSelector, bids_version, introspect, resolve, schema_version
@@ -39,15 +40,16 @@ def validate(
     root: str | Path,
     *,
     schema: SchemaSelector = None,
-    read_headers: bool = False,
+    read_headers: bool = True,
     max_rows: int = 1000,
     subjects: list[str] | None = None,
 ) -> ValidationReport:
     """Validate the BIDS dataset at ``root``.
 
     ``schema`` selects the schema version (default: the bundled default).
-    ``read_headers`` enables NIfTI header checks (needs nibabel). ``subjects``,
-    if given, restricts validation to those ``sub-*`` directories.
+    ``read_headers`` reads NIfTI headers for header checks (default on, needs
+    nibabel; set False to skip for speed). ``subjects``, if given, restricts
+    validation to those ``sub-*`` directories.
     """
     schema_ns = resolve(schema)
     tree = _file_tree(root, schema_ns)
@@ -80,8 +82,16 @@ def validate(
     ignore = load_bidsignore(root)
     files = [f for f in files if not ignore.match(f.relpath)]
 
+    # As each file is validated, record which stimuli it references, so the
+    # dataset-level checks can flag stimuli that nothing uses.
+    viewed_stimuli: set[str] = set()
     for bids_file in files:
-        report.files.append(_validate_one(schema_ns, builder, bids_file))
+        verdict, context = _validate_one(schema_ns, builder, bids_file)
+        report.files.append(verdict)
+        if context is not None:
+            collect_viewed(bids_file, context, viewed_stimuli)
+
+    report.dataset_issues.extend(dataset_checks(tree, files, viewed_stimuli))
 
     report.recompute()
     return report
@@ -92,7 +102,7 @@ def validate_subject(
     subject: str,
     *,
     schema: SchemaSelector = None,
-    read_headers: bool = False,
+    read_headers: bool = True,
     max_rows: int = 1000,
 ) -> ValidationReport:
     """Validate a single subject. ``subject`` may be given with or without the ``sub-`` prefix."""
@@ -111,7 +121,7 @@ def validate_file(
     relpath: str,
     *,
     schema: SchemaSelector = None,
-    read_headers: bool = False,
+    read_headers: bool = True,
     max_rows: int = 1000,
 ) -> FileVerdict:
     """Validate one file within a dataset.
@@ -135,7 +145,8 @@ def validate_file(
         verdict.recompute_severity()
         return verdict
     builder = ContextBuilder(schema_ns, tree, read_headers=read_headers, max_rows=max_rows)
-    return _validate_one(schema_ns, builder, bids_file)
+    verdict, _context = _validate_one(schema_ns, builder, bids_file)
+    return verdict
 
 
 # ---------------------------------------------------------------------------
@@ -143,8 +154,11 @@ def validate_file(
 # ---------------------------------------------------------------------------
 
 
-def _validate_one(schema_ns, builder: ContextBuilder, bids_file: BIDSFile) -> FileVerdict:
+def _validate_one(
+    schema_ns, builder: ContextBuilder, bids_file: BIDSFile
+) -> tuple[FileVerdict, dict | None]:
     verdict = FileVerdict(path=Path(bids_file.relpath))
+    context: dict | None = None
     try:
         context = builder.build(bids_file)
         verdict.issues.extend(bespoke_checks(bids_file, context, read_headers=builder.read_headers))
@@ -161,7 +175,7 @@ def _validate_one(schema_ns, builder: ContextBuilder, bids_file: BIDSFile) -> Fi
             )
         )
     verdict.recompute_severity()
-    return verdict
+    return verdict, context
 
 
 def _check_dataset_description(tree: FileTree, report: ValidationReport) -> None:

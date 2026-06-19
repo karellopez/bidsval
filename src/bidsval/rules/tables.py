@@ -66,11 +66,12 @@ def eval_columns(
                 )
             )
 
-    # Extra columns: must be schema-defined or documented in the sidecar.
+    # Extra columns: handled per the rule's additional_columns mode (the three real
+    # modes; "n/a" or anything else means no extra-column check, never a finding).
     sidecar = context.get("sidecar")
     documented = set(sidecar.keys()) if isinstance(sidecar, Mapping) else set()
-    additional = rule.get("additional_columns")
-    if additional is not None:
+    additional = str(rule.get("additional_columns") or "")
+    if additional in ("allowed", "allowed_if_defined", "not_allowed"):
         for name in columns:
             if name in defined or name in documented:
                 continue
@@ -86,7 +87,19 @@ def eval_columns(
                         rule=path,
                     )
                 )
-            else:  # not allowed
+            elif additional == "allowed_if_defined":
+                issues.append(
+                    Issue(
+                        code="TSV_ADDITIONAL_COLUMNS_MUST_DEFINE",
+                        sub_code=name,
+                        severity=Severity.ERROR,
+                        location=location,
+                        message=f"extra column {name!r} must be documented in the JSON sidecar",
+                        suggestion=f"Add a description of {name!r} to the JSON sidecar.",
+                        rule=path,
+                    )
+                )
+            else:  # not_allowed
                 issues.append(
                     Issue(
                         code="TSV_ADDITIONAL_COLUMNS_NOT_ALLOWED",
@@ -97,6 +110,8 @@ def eval_columns(
                         rule=path,
                     )
                 )
+
+    issues += _pseudo_age(columns, location, path)
 
     # Numeric value types (safe coercion check only).
     for name, (definition, _requirement) in defined.items():
@@ -130,6 +145,24 @@ def _check_numeric_column(
                 rule=path,
             )
     return None
+
+
+def _pseudo_age(columns: Mapping[str, Any], location: str, path: str) -> list[Issue]:
+    """Flag the deprecated ``89+`` value in an ``age`` column."""
+    age = columns.get("age")
+    if not isinstance(age, list) or not any(str(v).strip() == "89+" for v in age):
+        return []
+    return [
+        Issue(
+            code="TSV_PSEUDO_AGE_DEPRECATED",
+            sub_code="age",
+            severity=Severity.WARNING,
+            location=location,
+            message="the value '89+' in the 'age' column is deprecated",
+            suggestion="Use 89 for all ages 89 and over (the cap, not a '+', preserves privacy).",
+            rule=path,
+        )
+    ]
 
 
 def _level(requirement: Any) -> str:

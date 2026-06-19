@@ -38,7 +38,7 @@ Validity always depends on whether there are error-level findings.
 Validate a BIDS dataset against the schema and report errors and warnings.
 
 ```
-bidsval validate PATH [--schema SELECTOR] [--subject SUB] [--headers]
+bidsval validate PATH [--schema SELECTOR] [--subject SUB] [--no-headers]
                       [--output-type TYPES] [--out-dir DIR] [--show LEVELS]
 ```
 
@@ -58,7 +58,7 @@ Warnings flag recommended-but-missing metadata and do not affect validity.
 |---|---|---|
 | `--schema SELECTOR` | bundled latest | which schema to validate against. A BIDS version (e.g. `1.11.1`), `latest`, a URL, a local `schema.json`, or a YAML schema source directory. Run `bidsval schema` to list bundled versions. See [schema selection](schema-selection.md). |
 | `--subject SUB` | all subjects | validate only this subject. Accepts `sub-01` or just `01` (the `sub-` prefix is added if missing). Files outside that subject are skipped. |
-| `--headers` | off | also validate NIfTI headers (image dimensions and the like). Requires `nibabel`; these checks are skipped if it is not installed. |
+| `--no-headers` | (headers on) | skip NIfTI header checks. Headers are read by default (needs `nibabel`; skipped automatically if it is not installed). Pass this to validate faster on large datasets. |
 | `--output-type TYPES` | `text` | comma-separated output formats: `text`, `json`, `sarif`, `html`, or `all`. Selecting more than one requires `--out-dir`. See [output formats](output-formats.md). |
 | `--out-dir DIR` | (stdout) | write reports into this directory (created if needed), one `report.<ext>` per format. Required when more than one format is selected; a single format prints to stdout. |
 | `--show LEVELS` | `error,warning` | severities to display: any of `error`, `warning`, `ignore`, or `all` (comma-separated). Filters the output only; it does not change validity or the exit code. |
@@ -108,8 +108,8 @@ bidsval validate /data/my_study --schema 1.10.0
 # validate against the development tip of the schema (fetched and cached)
 bidsval validate /data/my_study --schema latest
 
-# also read NIfTI headers (needs nibabel)
-bidsval validate /data/my_study --headers
+# skip NIfTI header reading (faster on large datasets)
+bidsval validate /data/my_study --no-headers
 
 # machine-readable JSON to stdout (for scripting)
 bidsval validate /data/my_study --output-type json

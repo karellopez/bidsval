@@ -18,7 +18,7 @@ rather than failing. See [how it works: dependencies](internals.md#5-dependencie
 ```shell
 bidsval validate <dataset>           # validate a dataset (text summary, exits non-zero on errors)
 bidsval validate <dataset> --subject sub-01      # one subject
-bidsval validate <dataset> --headers             # also check NIfTI headers (needs nibabel)
+bidsval validate <dataset> --no-headers          # skip NIfTI header checks (read by default)
 bidsval schema                       # show the resolved + bundled schema versions
 bidsval eval "<expression>" --context '<json>'   # evaluate one schema expression
 ```

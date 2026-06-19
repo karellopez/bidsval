@@ -69,8 +69,8 @@ Examples:
   # pin a schema version for reproducible results
   bidsval validate /data/my_study --schema 1.10.0
 
-  # also read NIfTI headers (needs nibabel)
-  bidsval validate /data/my_study --headers
+  # skip NIfTI header reading (faster)
+  bidsval validate /data/my_study --no-headers
 
   # write machine-readable and HTML reports into a directory
   bidsval validate /data/my_study --output-type json,html --out-dir ./reports
@@ -250,10 +250,10 @@ def build_parser() -> argparse.ArgumentParser:
         "added if missing).",
     )
     validate_cmd.add_argument(
-        "--headers",
+        "--no-headers",
         action="store_true",
-        help="also validate NIfTI headers (image dimensions and the like). Requires nibabel; "
-        "these checks are skipped if it is not installed.",
+        help="skip NIfTI header checks (faster). Headers are read by default (needs nibabel); "
+        "if nibabel is not installed these checks are skipped anyway.",
     )
     validate_cmd.add_argument(
         "--output-type",
@@ -328,7 +328,7 @@ def _run_validate(args: argparse.Namespace) -> int:
         subjects = [sub]
     try:
         report = run_validate(
-            args.dataset, schema=args.schema, read_headers=args.headers, subjects=subjects
+            args.dataset, schema=args.schema, read_headers=not args.no_headers, subjects=subjects
         )
     except SchemaNotAvailable as error:
         print(f"error: {error}", file=sys.stderr)
