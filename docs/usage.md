@@ -3,15 +3,25 @@
 ## Install
 
 ```shell
-pip install -e .               # bidsval and all required readers (nibabel, pandas, mne)
-pip install -e ".[dev]"        # also the test and lint tooling
+pip install bidsval
 ```
 
+That is everything: the bundled BIDS schemas and the content readers come with it, so
+it works offline. Python 3.10 to 3.14.
+
 bidsval requires `bidsschematools` and `pydantic` (the schema engine and the typed
-result model) plus the content readers `nibabel`, `pandas`, and `mne`, so a default
-install can read NIfTI headers, TSV columns, and EEG/MEG recordings out of the box.
-If a reader is ever missing, or a file is malformed, the affected check is skipped
-rather than failing. See [how it works: dependencies](internals.md#5-dependencies-and-why-they-are-what-they-are).
+result model) plus the content readers `nibabel`, `pandas`, and `mne`, so it can read
+NIfTI headers, TSV columns, and EEG/MEG recordings out of the box. If a reader is ever
+missing, or a file is malformed, the affected check is skipped rather than failing.
+See [how it works: dependencies](internals.md#5-dependencies-and-why-they-are-what-they-are).
+
+For development, clone the repo and install editable with the dev tooling:
+
+```shell
+git clone https://github.com/karellopez/bidsval
+cd bidsval
+pip install -e ".[dev]"
+```
 
 ## Command line
 

@@ -13,17 +13,30 @@ functional, diffusion, fieldmaps, perfusion, EEG, MEG, iEEG, behavioural, PET,
 microscopy, motion, NIRS, MRS - not a fixed set of modalities. Point it at a
 newer schema and the newer rules apply with no code change.
 
-> Working and tested against real MRI, EEG, MEG, and PET datasets and the
-> official `bids-examples` corpus, with zero false positives versus the reference
-> validator. It checks file structure, sidecar fields (presence and value type),
-> associated files (events, bval/bvec, channels, ASL, ...), and tabular columns.
-> Full coverage parity with the reference is still in progress; see "Roadmap".
+> Verified against the reference Deno `bids-validator` across the full
+> `bids-examples` corpus and real MRI/EEG/MEG/PET datasets, at a matched schema, with
+> **zero false positives**. It covers filename and path legality, file integrity,
+> sidecar field presence and value types, associated files, tabular columns (types,
+> order, uniqueness), the inheritance principle, and dataset-level checks. The
+> remaining gaps are HED and symlink validation; see the
+> [comparison](https://github.com/karellopez/bidsval/blob/main/docs/comparison-vs-deno.md)
+> and "Roadmap".
 
 ## Install
 
 ```shell
-pip install -e .                 # bidsval and all required readers (nibabel, pandas, mne)
-pip install -e ".[dev]"          # also the test and lint tooling
+pip install bidsval
+```
+
+That is all you need: the bundled BIDS schemas and the content readers
+(`nibabel`, `pandas`, `mne`) come with it, so it works offline. Python 3.10 to 3.14.
+
+For development, from a clone:
+
+```shell
+git clone https://github.com/karellopez/bidsval
+cd bidsval
+pip install -e ".[dev]"   # editable install, plus the test and lint tooling
 ```
 
 ## Validate a dataset
@@ -139,19 +152,21 @@ bidsval eval "suffix == 'T1w'" --context '{"suffix": "T1w"}'
 | `bidsval.issues` / `bidsval.report` | Typed findings and results. |
 | `bidsval.cli` | The `bidsval` command. |
 
-Done: schema engine; file/context/rule layers; dataset/subject/file validation;
-JSON sidecar field presence and value-type checks; the associations layer
-(events, bval/bvec, channels, ASL, coordsystem, ...); tabular-column checks;
-empty-file / unreadable-NIfTI checks; bundled + URL + `latest` schema selection;
-text / JSON / SARIF / HTML outputs.
+Done: the schema engine and the file/context/rule layers; dataset/subject/file
+validation; filename and path legality (with `.bidsignore`); file-integrity checks;
+sidecar field presence and full value-type checks; the associations layer
+(events, bval/bvec, channels, ASL, coordsystem, atlas, ...); tabular checks (types,
+order, uniqueness, additional columns); inheritance checks; dataset-level checks;
+CITATION.cff; derivatives recursion; bundled + URL + `latest` schema selection;
+text / JSON / SARIF / HTML output.
 
 ## Roadmap
 
 Filename/path legality, file integrity, the cross-file and tabular checks (including
 full value-type checking and type redefinition), inheritance checks, CITATION.cff,
 derivatives recursion, and the coordsystems/atlas-description aggregates are all in
-(see [comparison vs the Deno reference validator](docs/comparison-vs-deno.md) for full
-coverage). Remaining:
+(see [comparison vs the Deno reference validator](https://github.com/karellopez/bidsval/blob/main/docs/comparison-vs-deno.md)
+for full coverage). Remaining:
 
 1. Deferred reference checks: HED (needs a HED validator dependency) and symlink checks
    (the annex-symlink tension). Only the gzip/ome/tiff content-header aggregates are
@@ -162,14 +177,14 @@ coverage). Remaining:
 
 ## Documentation
 
-See [`docs/`](docs/index.md):
+The docs live in [`docs/`](https://github.com/karellopez/bidsval/tree/main/docs) on GitHub:
 
-- [usage](docs/usage.md) - install, the CLI, the Python API.
-- [CLI reference](docs/cli-reference.md) - every command and option, with examples and exit codes.
-- [schema selection](docs/schema-selection.md) - the single `--schema` selector.
-- [output formats](docs/output-formats.md) - `--output-type`, `--out-dir`, `--show`.
-- [how it works](docs/internals.md) - the complete technical reference: design, dependencies, every layer, flowcharts, and a glossary.
-- [comparison vs the Deno reference validator](docs/comparison-vs-deno.md) - coverage, results, and the no-false-positives evidence.
+- [usage](https://github.com/karellopez/bidsval/blob/main/docs/usage.md) - install, the CLI, the Python API.
+- [CLI reference](https://github.com/karellopez/bidsval/blob/main/docs/cli-reference.md) - every command and option, with examples and exit codes.
+- [schema selection](https://github.com/karellopez/bidsval/blob/main/docs/schema-selection.md) - the single `--schema` selector.
+- [output formats](https://github.com/karellopez/bidsval/blob/main/docs/output-formats.md) - `--output-type`, `--out-dir`, `--show`.
+- [how it works](https://github.com/karellopez/bidsval/blob/main/docs/internals.md) - the complete technical reference: design, dependencies, every layer, flowcharts, and a glossary.
+- [comparison vs the Deno reference validator](https://github.com/karellopez/bidsval/blob/main/docs/comparison-vs-deno.md) - coverage, results, and the no-false-positives evidence.
 
 ## Develop
 
@@ -181,4 +196,4 @@ ruff check src tests
 
 ## License
 
-MIT. See [LICENSE](LICENSE).
+MIT. See [LICENSE](https://github.com/karellopez/bidsval/blob/main/LICENSE).
