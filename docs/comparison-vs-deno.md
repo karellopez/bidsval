@@ -104,7 +104,8 @@ engine. The table tracks the reference's *hardcoded* checks.
 | TSV_COLUMN_ORDER_INCORRECT | yes | initial-column order |
 | TSV_INDEX_VALUE_NOT_UNIQUE | yes | |
 | TSV_PSEUDO_AGE_DEPRECATED | yes | |
-| TSV_VALUE_INCORRECT_TYPE | partial | numeric types only; enum/string value checks deferred |
+| TSV_VALUE_INCORRECT_TYPE | yes | type, format pattern, allowed values (enum), and bounds |
+| TSV_COLUMN_TYPE_REDEFINED | yes | incompatible sidecar redefinition of a column |
 | INVALID_GZIP | yes | for `.tsv.gz` (a corrupt `.nii.gz` is `NIFTI_HEADER_UNREADABLE`) |
 | EMPTY_FILE | yes | |
 | NIFTI_HEADER_UNREADABLE / AMBIGUOUS_AFFINE | yes | read by default; `--no-headers` to skip |
@@ -114,13 +115,14 @@ engine. The table tracks the reference's *hardcoded* checks.
 | SIDECAR_WITHOUT_DATAFILE | yes | directory-recording sidecars handled |
 | MULTIPLE_INHERITABLE_FILES / SIDECAR_FIELD_OVERRIDE | yes | |
 | CITATION_CFF_VALIDATION_ERROR | yes | conservative subset of the CFF schema |
-| TSV_COLUMN_TYPE_REDEFINED | no | deferred (sidecar value-signature refinement) |
 | HED_ERROR / HED_WARNING | no | deferred (needs a HED validator dependency) |
 | SYMLINK_BROKEN / CYCLE / OUT_OF_TREE / IN_SUBMODULE | no | deferred (bidsval treats unfetched annex symlinks as present, to avoid false positives on metadata-only clones) |
 | BLACKLISTED_MODALITY | n/a | a reference run-configuration feature, not a dataset check |
 
 Derivatives recursion (validating `derivatives/<pipeline>` as nested datasets) is
-also implemented, under `--recursive`.
+also implemented, under `--recursive`. The `coordsystems` and `atlas_description`
+aggregates are now built, so the EMG coordinate-system and atlas-description rules
+fire.
 
 ## Deliberately deferred, and why
 
@@ -129,11 +131,8 @@ also implemented, under `--recursive`.
 - **Symlink checks** conflict with bidsval treating unfetched git-annex symlinks as
   present (so metadata-only OpenNeuro clones validate without false positives); they
   need a fetched-vs-unfetched distinction first.
-- **`TSV_COLUMN_TYPE_REDEFINED`** and **non-numeric `TSV_VALUE_INCORRECT_TYPE`**
-  (enum/pattern value checks) need the full value-signature logic and are held back
-  to avoid false positives from incomplete schema enums.
-- The **`coordsystems` / `atlas_description` aggregates** (and gzip/ome/tiff headers)
-  that the engine currently skips would let a few more schema rules fire.
+- Only the **gzip / ome / tiff content headers** remain unbuilt, so the few schema
+  rules that read them are still skipped.
 
 ## Where bidsval is ahead
 

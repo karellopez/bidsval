@@ -114,7 +114,7 @@ boundary is explicit.
 |---|---|
 | datatypes, entities (and their value patterns), suffixes, extensions | the three reserved top-level folders `sourcedata` / `code` / `derivatives` (in `files/tree.py`) |
 | metadata field names, types, allowed values, numeric bounds | the map from requirement level to severity (`required` to error, `recommended` to warning, ...) |
-| which fields are required or recommended per datatype and suffix | the short list of not-yet-built combined values (`gzip`, `ome`, `tiff`, `coordsystems`, `atlas_description`) the engine skips |
+| which fields are required or recommended per datatype and suffix | the short list of not-yet-built content headers (`gzip`, `ome`, `tiff`) the engine skips |
 | the conditions (selectors + checks) for every rule | the two non-schema file checks (`EMPTY_FILE`, `NIFTI_HEADER_UNREADABLE`) |
 | which folder extensions are whole-recording directories (those ending in `/`) | the built-in functions of the expression language (`match`, `exists`, ...): these are features of the *language*, not BIDS terms |
 | associations (which file travels with which) | |
@@ -598,10 +598,12 @@ its row/column counts and its sidecar; a gradient table's values and shape; or j
 the path for a plain "does it exist" check).
 
 Built today: `events`, `bval`, `bvec`, `channels`, `aslcontext`, `m0scan`,
-`magnitude`, `magnitude1`, `coordsystem`, `electrodes`, `physio`. The two combined
-values that need more than a single file (`coordsystems`, `atlas_description`) are
-deliberately **not** built; the rule engine skips rules that reference them so they
-are never guessed (see [section 13](#13-the-no-false-positives-invariant)).
+`magnitude`, `magnitude1`, `coordsystem`, `electrodes`, `physio`,
+`atlas_description` (the atlas descriptor file), and `coordsystems` (the aggregate of
+every `space-` coordsystem file, exposing `paths` / `spaces` /
+`ParentCoordinateSystems` for the EMG coordinate-system rules). Only the gzip / ome /
+tiff content headers remain unbuilt; the rule engine skips rules that reference those
+(see [section 13](#13-the-no-false-positives-invariant)).
 
 ### Loading content: `context/loaders.py`
 
@@ -690,7 +692,7 @@ removes duplicates.
 flowchart TD
     A["apply_rules(schema, context)"] --> B["walk the rule groups:<br/>checks, sidecars,<br/>dataset_metadata, tabular_data"]
     B --> C{"for each rule"}
-    C --> EVAL{"does it mention a value<br/>bidsval does not build yet?<br/>(gzip / ome / tiff /<br/>coordsystems /<br/>atlas_description)"}
+    C --> EVAL{"does it mention a value<br/>bidsval does not build yet?<br/>(gzip / ome / tiff<br/>content headers)"}
     EVAL -->|yes| SKIP["skip this rule"]
     EVAL -->|no| SEL{"do all selectors<br/>pass?"}
     SEL -->|"no or undeterminable"| SKIP
@@ -761,11 +763,19 @@ For a table that was read, `eval_columns` checks the actual columns against the
 - an extra column that is neither defined by the schema nor documented in the sidecar
   -> `TSV_ADDITIONAL_COLUMNS_UNDEFINED` (warning) or
   `TSV_ADDITIONAL_COLUMNS_NOT_ALLOWED` (error), depending on the rule;
-- a value that cannot be the column's numeric type ->
-  `TSV_VALUE_INCORRECT_TYPE` (error), with the row number.
+- the initial columns out of order -> `TSV_COLUMN_ORDER_INCORRECT`; an index column's
+  values not unique -> `TSV_INDEX_VALUE_NOT_UNIQUE`; the deprecated `89+` age ->
+  `TSV_PSEUDO_AGE_DEPRECATED`;
+- a value that does not match its column's type, format pattern, allowed values
+  (enum), or numeric bounds -> `TSV_VALUE_INCORRECT_TYPE` (error), with the row number;
+- a sidecar that redefines a schema column's type incompatibly ->
+  `TSV_COLUMN_TYPE_REDEFINED` (warning).
 
-Allowed-value (enumeration) checks are intentionally left out for now: an incomplete
-list in the schema could otherwise raise a false alarm, while a numeric check is safe.
+Value checking uses the column's full *signature* (`rules/column_types.py`): the
+schema's format pattern, enum levels, and bounds, optionally refined by the sidecar.
+It mirrors the reference (including its loose multi-format pattern), so the checks
+stay a subset of the reference's, never a false positive; free-text (string) columns
+are skipped.
 
 ### Field-value validation: `rules/values.py`
 
@@ -861,7 +871,7 @@ actually a problem.)
 
 ```mermaid
 flowchart TD
-    R["a rule"] --> A{"does it mention a value<br/>bidsval does not build yet?<br/>(gzip, ome, tiff,<br/>coordsystems,<br/>atlas_description)"}
+    R["a rule"] --> A{"does it mention a value<br/>bidsval does not build yet?<br/>(gzip, ome, tiff<br/>content headers)"}
     A -->|yes| SKIP["skip the rule"]
     A -->|no| B{"is a selector<br/>undeterminable?"}
     B -->|yes| SKIP
@@ -876,8 +886,9 @@ flowchart TD
 
 Where each guard sits:
 
-- **Values not built yet:** a rule that mentions a combined value bidsval does not
-  compute yet is skipped whole, so it is never tested against empty data.
+- **Values not built yet:** a rule that mentions a value bidsval does not compute yet
+  (the gzip / ome / tiff content headers) is skipped whole, so it is never tested
+  against empty data.
 - **Undeterminable conditions:** a condition that cannot be parsed, or that uses a
   function from a newer schema, skips the rule or check rather than failing.
 - **"No value" means "cannot determine":** a check that comes back as "no value"
@@ -1031,7 +1042,8 @@ Every code bidsval can report, where it comes from, and its severity.
 | `TSV_COLUMN_MISSING` | error | `rules/tables.py` | a required column is missing |
 | `TSV_ADDITIONAL_COLUMNS_UNDEFINED` | warning | `rules/tables.py` | an extra column is undocumented |
 | `TSV_ADDITIONAL_COLUMNS_NOT_ALLOWED` | error | `rules/tables.py` | an extra column where none are allowed |
-| `TSV_VALUE_INCORRECT_TYPE` | error | `rules/tables.py` | a value cannot be the column's numeric type |
+| `TSV_VALUE_INCORRECT_TYPE` | error | `rules/tables.py` | a value breaks its column's type, pattern, allowed values, or bounds |
+| `TSV_COLUMN_TYPE_REDEFINED` | warning | `rules/tables.py` | a sidecar redefines a schema column's type incompatibly |
 | *(schema-provided)* | error/warning | `rules/engine.py` | a `checks` failure carries its own code from the schema (`CHECK_ERROR` if the rule names none) |
 
 The `SIDECAR_KEY_*` / `JSON_KEY_*` codes can also be overridden by a code the schema
