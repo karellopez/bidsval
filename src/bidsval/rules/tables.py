@@ -157,24 +157,34 @@ def _value_types(
         if is_trivial(signature):
             continue
         spec = compile_spec(signature, formats)
+        bad_lines: list[int] = []
+        first_value: Any = None
         for index, value in enumerate(columns[name]):
             text = str(value)
             if name == "age" and text == "89+":
                 continue  # reported as TSV_PSEUDO_AGE_DEPRECATED instead
             if not check_value(text, spec):
-                issues.append(
-                    Issue(
-                        code="TSV_VALUE_INCORRECT_TYPE",
-                        sub_code=name,
-                        severity=Severity.ERROR,
-                        location=location,
-                        line=index + 2,
-                        message=f"column {name!r}: value {value!r} is not valid for its type",
-                        suggestion=_value_suggestion(signature),
-                        rule=path,
-                    )
+                if not bad_lines:
+                    first_value = value
+                bad_lines.append(index + 2)  # 1-based, +1 for the header row
+        if bad_lines:
+            # One finding per column (matching the reference validator: same
+            # code / first line / message). ``lines`` lists every offending row
+            # so a consumer can point at all the bad cells, without changing the
+            # finding count.
+            issues.append(
+                Issue(
+                    code="TSV_VALUE_INCORRECT_TYPE",
+                    sub_code=name,
+                    severity=Severity.ERROR,
+                    location=location,
+                    line=bad_lines[0],
+                    lines=bad_lines,
+                    message=f"column {name!r}: value {first_value!r} is not valid for its type",
+                    suggestion=_value_suggestion(signature),
+                    rule=path,
                 )
-                break  # one type error per column is enough to act on
+            )
     return issues
 
 

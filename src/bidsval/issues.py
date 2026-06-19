@@ -86,7 +86,8 @@ class Issue(BaseModel):
     suggestion: str | None = None
     affects: list[str] = Field(default_factory=list)  # entity/participant labels affected
     rule: str | None = None  # schema rule path that produced the finding
-    line: int | None = None  # 1-based, for tabular/text findings
+    line: int | None = None  # 1-based, for tabular/text findings (the first one)
+    lines: list[int] = Field(default_factory=list)  # all 1-based rows a column finding spans
     character: int | None = None  # 1-based
     provenance: RuleProvenance | None = None
     fix: Fix | None = None
