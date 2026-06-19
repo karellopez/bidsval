@@ -166,19 +166,30 @@ reference with `-s`, bidsval with `--schema`).
 
 # Update: matched-schema comparison and added checks
 
-The results above let the reference pick each dataset's declared `BIDSVersion`,
-while bidsval used its default (1.11.1). That is unfair for older datasets. This
-section re-runs the comparison with **the same schema for both validators
-regardless of the dataset's declared version** (the reference forced to `-s v1.11.1`,
+This section re-runs the comparison forcing both validators to the same schema
+regardless of the dataset's declared version (the reference with `-s v1.11.1`,
 bidsval at its default 1.11.1, both schema 1.2.1), and records the checks added since
 the first report.
 
-## Why matched-schema matters
+## An important correction
 
-Forcing one schema is the honest test, and it changed the conclusions. Two
-differences that the mismatched run had written off as "schema evolution" turned out
-to be **real bidsval false positives** once both validators ran 1.11.1. They have
-been fixed (below). The lesson: always match schemas before judging a difference.
+The first report implied the reference picks each dataset's declared `BIDSVersion`,
+so older datasets were being compared at a different schema. That was wrong.
+**`bids-validator-deno` 2.4.1 always validates against its own bundled schema
+(version 1.2.1, BIDS 1.11.1) no matter what `BIDSVersion` a dataset declares** (it
+reads the declared version only to warn `UNKNOWN_BIDS_VERSION`). Verified: asl002
+(declared 1.5.0), ds003 (1.0.0), and ds000246 (1.8.0) all validate at Deno schema
+1.2.1 by default. So `-s v1.11.1` does not change the reference's output, and the
+reference columns here are identical to the first report.
+
+The consequence: the "schema evolution / skew" explanation the first report gave for
+the eyetracking and atlas differences was incorrect. Both validators were effectively
+at 1.11.1 the whole time, so those were **real bidsval false positives**, not schema
+artifacts. Re-auditing is what caught them; they are fixed below. (The only place a
+per-dataset schema genuinely mattered was running bidsval itself with `--schema
+1.8.0`, which is bidsval changing schema, not the reference.) The cells that differ
+from the first report are on the **bidsval** side, from this round's changes (NIfTI
+headers read by default; directory recordings now validating).
 
 ## Checks added since the first report
 
