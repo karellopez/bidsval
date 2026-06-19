@@ -118,6 +118,7 @@ def eval_columns(
 
     issues += _pseudo_age(columns, location, path)
     issues += _index_unique(rule, object_columns, columns, location, path)
+    issues += _initial_columns_order(rule, object_columns, columns, location, path)
 
     # Numeric value types (safe coercion check only).
     for name, (definition, _requirement) in defined.items():
@@ -142,8 +143,9 @@ def _index_unique(
     """The combination of the rule's index columns must be unique across rows."""
     keys = [str(k) for k in rule.get("index_columns", [])]
     names = [str(object_columns.get(k, {}).get("name", k)) for k in keys]
-    if not names or any(name not in columns for name in names):
-        return []  # only check when every index column is present
+    names = [name for name in names if name in columns]  # the present index columns
+    if not names:
+        return []
     seen: set[tuple] = set()
     for row in zip(*(columns[name] for name in names), strict=False):
         if row in seen:
@@ -161,6 +163,51 @@ def _index_unique(
             ]
         seen.add(row)
     return []
+
+
+def _initial_columns_order(
+    rule: Mapping[str, Any],
+    object_columns: Mapping[str, Any],
+    columns: Mapping[str, list[Any]],
+    location: str,
+    path: str,
+) -> list[Issue]:
+    """The rule's ``initial_columns`` must appear first, in the given order.
+
+    Only present columns are checked for order (a missing required column is left to
+    the column-presence check, so it is not reported twice). Mirrors the reference's
+    ``evalInitialColumns``.
+    """
+    initial = rule.get("initial_columns")
+    if not initial:
+        return []
+    headers = list(columns.keys())
+    rule_columns = rule.get("columns", {})
+    resolved: list[tuple[str, int]] = []
+    for raw_key in initial:
+        key = str(raw_key)
+        name = str(object_columns.get(key, {}).get("name", key))
+        requirement = _level(rule_columns.get(key)) if key in rule_columns else ""
+        index = headers.index(name) if name in headers else -1
+        if requirement == "required" or index != -1:
+            resolved.append((name, index))
+    issues: list[Issue] = []
+    for target_index, (name, index) in enumerate(resolved):
+        if index != -1 and index != target_index:
+            issues.append(
+                Issue(
+                    code="TSV_COLUMN_ORDER_INCORRECT",
+                    sub_code=name,
+                    severity=Severity.ERROR,
+                    location=location,
+                    message=f"column {name!r} should be at position {target_index + 1} "
+                    f"but is at position {index + 1}",
+                    suggestion=f"Move {name!r} to position {target_index + 1}; the schema's "
+                    "initial columns must come first, in order.",
+                    rule=path,
+                )
+            )
+    return issues
 
 
 def _check_numeric_column(

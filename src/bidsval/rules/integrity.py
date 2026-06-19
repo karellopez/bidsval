@@ -12,6 +12,7 @@ git-annex file with no local content) is skipped.
 
 from __future__ import annotations
 
+import gzip
 from collections.abc import Mapping
 from typing import Any
 
@@ -54,6 +55,32 @@ def integrity_checks(bids_file: BIDSFile, context: Mapping[str, Any]) -> list[Is
         return _json_integrity(bids_file, context)
     if extension == ".tsv":  # gzipped TSVs are not scanned line-by-line
         return _tsv_integrity(bids_file)
+    if extension == ".tsv.gz":
+        return _gzip_integrity(bids_file)
+    return []
+
+
+def _gzip_integrity(bids_file: BIDSFile) -> list[Issue]:
+    """Confirm a gzipped TSV decompresses (matches the reference's INVALID_GZIP, which
+    is raised for `.tsv.gz`; a corrupt `.nii.gz` is covered by the NIfTI header check
+    instead, so it is not checked here)."""
+    try:
+        with gzip.open(bids_file.abspath, "rb") as handle:
+            while handle.read(1 << 20):  # decompress fully so truncation is caught
+                pass
+    except (OSError, EOFError):
+        return [
+            Issue(
+                code="INVALID_GZIP",
+                severity=Severity.ERROR,
+                location=bids_file.relpath,
+                message=f"{bids_file.name}: the gzip stream could not be decompressed",
+                suggestion=(
+                    "The file is named .tsv.gz but is not a valid gzip stream (it may be "
+                    "truncated or corrupted). Re-create it with proper gzip compression."
+                ),
+            )
+        ]
     return []
 
 

@@ -19,6 +19,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from .context import ContextBuilder
+from .context.inheritance import inheritance_checks
 from .files import BIDSFile, FileTree
 from .files.bidsignore import load_bidsignore
 from .issues import Issue, Severity
@@ -165,6 +166,7 @@ def _validate_one(
         verdict.issues.extend(bespoke_checks(bids_file, context, read_headers=builder.read_headers))
         verdict.issues.extend(integrity_checks(bids_file, context))
         verdict.issues.extend(filename_checks(schema_ns, context, bids_file))
+        verdict.issues.extend(inheritance_checks(schema_ns, builder.tree, bids_file))
         verdict.issues.extend(apply_rules(schema_ns, context))
     except Exception as error:  # never let one file abort the whole run
         verdict.issues.append(
