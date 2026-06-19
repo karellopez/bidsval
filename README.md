@@ -147,17 +147,19 @@ text / JSON / SARIF / HTML outputs.
 
 ## Roadmap
 
-Filename/path legality, file-integrity, and the cross-file and tabular checks are now
-in (see [comparison vs the Deno reference validator](docs/comparison-vs-deno.md) for
+Filename/path legality, file integrity, the cross-file and tabular checks, inheritance
+checks, CITATION.cff, and derivatives recursion are all in (see
+[comparison vs the Deno reference validator](docs/comparison-vs-deno.md) for full
 coverage). Remaining:
 
-1. Deferred reference checks: `SIDECAR_WITHOUT_DATAFILE` (needs directory-recording
-   associations), HED, CITATION.cff, the last tabular checks (column order, index
-   uniqueness, type redefinition), `INVALID_GZIP`, and symlink checks.
-2. The `coordsystems` / `atlas_description` aggregates and derivatives recursion.
-3. The ahead-of-market features: requirement-level completeness per subject,
-   reasoned waivers, explain mode, and one-click fixes (provenance and fix hints are
-   already on every finding).
+1. Deferred reference checks: HED (needs a HED validator dependency), symlink checks
+   (the annex-symlink tension), `TSV_COLUMN_TYPE_REDEFINED`, and the enum/string value
+   checks for `TSV_VALUE_INCORRECT_TYPE`.
+2. The `coordsystems` / `atlas_description` aggregates (and gzip/ome/tiff headers) the
+   engine currently skips.
+3. The ahead-of-market features: requirement-level completeness per subject, reasoned
+   waivers, explain mode, and one-click fixes (provenance and fix hints are already on
+   every finding).
 
 ## Documentation
 
