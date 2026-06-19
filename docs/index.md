@@ -11,6 +11,7 @@ a whole dataset, a single subject, a single file, or a single expression.
 - [Schema selection](schema-selection.md) - choosing a schema (the single `--schema` selector).
 - [Output formats](output-formats.md) - `--output-type`, `--out-dir`, `--show`.
 - [How it works](internals.md) - the complete technical reference: design, dependencies, every layer, flowcharts, and a glossary.
+- [Comparison vs the Deno reference validator](comparison-vs-deno.md) - coverage, results, and the no-false-positives evidence.
 
 ## Design in one paragraph
 
