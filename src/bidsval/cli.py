@@ -1,9 +1,9 @@
 """Command-line entry point for bidsval.
 
-* ``bidsval validate PATH`` - validate a dataset; print a text/JSON/SARIF summary
-  and optionally write JSON, SARIF, and HTML report files.
-* ``bidsval schema`` - print the resolved schema version and the bundled versions.
-* ``bidsval eval EXPR`` - evaluate a BIDS schema expression against a context.
+* ``bidsval validate PATH`` - validate a dataset and report errors and warnings as
+  text, JSON, SARIF, or HTML.
+* ``bidsval schema`` - show the schema version a selector resolves to and the bundled versions.
+* ``bidsval eval EXPR`` - evaluate one BIDS schema expression against a context.
 """
 
 from __future__ import annotations
@@ -20,66 +20,262 @@ from .render import EXTENSIONS, RENDERERS
 from .schema import SchemaNotAvailable, available_versions, bids_version, resolve, schema_version
 from .validate import validate as run_validate
 
+_DESCRIPTION = """\
+A schema-driven, pydantic-typed, in-process BIDS validator written in pure Python.
+
+It reads the official BIDS schema and checks a dataset against the rules in it: file
+names and locations, sidecar metadata (presence and value type), associated files, and
+tabular columns. It runs with no external runtime and reports findings as text, JSON,
+SARIF, or HTML.
+"""
+
+_EPILOG = """\
+Examples:
+  bidsval validate /path/to/dataset
+  bidsval validate /path/to/dataset --show all
+  bidsval validate /path/to/dataset --schema 1.10.0
+  bidsval validate /path/to/dataset --output-type json,html --out-dir ./reports
+  bidsval schema
+  bidsval eval "suffix == 'T1w'" --context '{"suffix": "T1w"}'
+
+Run 'bidsval <command> -h' for command-specific help and more examples.
+
+Exit codes:
+  0   the dataset is valid (no errors); warnings may still be present
+  1   validation found errors, or an expression failed to evaluate
+  2   usage error, file/IO error, schema not available, or invalid JSON input
+"""
+
+_VALIDATE_DESCRIPTION = """\
+Validate a BIDS dataset against the schema and report errors and warnings.
+
+A dataset is valid when it has no errors. Errors are rule violations (a misplaced or
+misnamed file, a required field that is missing, a value of the wrong type). Warnings
+flag recommended-but-missing metadata and do not affect validity. Use --subject to
+check a single participant.
+"""
+
+_VALIDATE_EPILOG = """\
+Examples:
+  # quick check (text summary; exits non-zero on errors, so it fits CI)
+  bidsval validate /data/my_study
+
+  # show everything, including warnings and suppressed notes
+  bidsval validate /data/my_study --show all
+
+  # check a single subject (the sub- prefix is optional)
+  bidsval validate /data/my_study --subject 01
+
+  # pin a schema version for reproducible results
+  bidsval validate /data/my_study --schema 1.10.0
+
+  # also read NIfTI headers (needs nibabel)
+  bidsval validate /data/my_study --headers
+
+  # write machine-readable and HTML reports into a directory
+  bidsval validate /data/my_study --output-type json,html --out-dir ./reports
+
+Output:
+  One format prints to stdout (text by default). Selecting more than one format requires
+  --out-dir, which writes report.<ext> per format (report.txt, report.json,
+  report.sarif, report.html). In the text report each issue is one line:
+  SEVERITY CODE [field] file - message.
+"""
+
+_SCHEMA_DESCRIPTION = """\
+Show the schema bidsval would use and the versions bundled with this install.
+
+Prints the BIDS version and the schema version a selector resolves to, plus the list of
+bundled versions you can pass to --schema, here or on 'validate'.
+"""
+
+_SCHEMA_EPILOG = """\
+Examples:
+  # the default (bundled latest) schema
+  bidsval schema
+
+  # a specific bundled version
+  bidsval schema --schema 1.10.0
+
+  # the development tip, fetched from the spec and cached
+  bidsval schema --schema latest
+"""
+
+_EVAL_DESCRIPTION = """\
+Evaluate one BIDS schema expression against a context and print the result as JSON.
+
+This exposes the same expression engine the validator uses, which is handy for
+understanding a rule or testing a single condition. Undefined names evaluate to null.
+"""
+
+_EVAL_EPILOG = """\
+Examples:
+  # a simple comparison
+  bidsval eval "suffix == 'T1w'" --context '{"suffix": "T1w"}'
+
+  # combine conditions with && and ||
+  bidsval eval "x > 0 && x < 10" --context '{"x": 5}'
+
+  # arithmetic and the modulo operator
+  bidsval eval "n % 2 == 0" --context '{"n": 4}'
+
+Operators:
+  comparison  ==  !=  <  <=  >  >=
+  logical     &&  ||  !
+  arithmetic  +  -  *  /  %
+
+  --context must be a JSON object (not an array or a scalar). An undefined name is null.
+"""
+
+
+# Order subcommands are shown in the full (`bidsval --help`) dump: the primary
+# command first.
+_HELP_ORDER = ["validate", "schema", "eval"]
+
+
+def _print_full_help(parser: argparse.ArgumentParser) -> None:
+    """Print the overview help, then every subcommand's full help.
+
+    Argparse's default top-level help lists only the subcommand names. This prints
+    that overview and then each subcommand's complete help (its arguments, their
+    explanations, and its examples), so ``bidsval --help`` shows everything in one
+    place without drilling into each subcommand.
+    """
+    parser.print_help()
+    sub_actions = [a for a in parser._actions if isinstance(a, argparse._SubParsersAction)]
+    for action in sub_actions:
+        names = sorted(
+            action.choices,
+            key=lambda n: _HELP_ORDER.index(n) if n in _HELP_ORDER else len(_HELP_ORDER),
+        )
+        for name in names:
+            print("\n" + "=" * 78)
+            print(f"  bidsval {name}")
+            print("=" * 78)
+            action.choices[name].print_help()
+
+
+class _FullHelpAction(argparse.Action):
+    """A ``-h/--help`` that prints the overview plus every subcommand's full help."""
+
+    def __init__(
+        self, option_strings, dest=argparse.SUPPRESS, default=argparse.SUPPRESS, help=None
+    ):
+        super().__init__(
+            option_strings=option_strings, dest=dest, default=default, nargs=0, help=help
+        )
+
+    def __call__(self, parser, namespace, values, option_string=None):
+        _print_full_help(parser)
+        parser.exit()
+
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="bidsval",
-        description="A schema-driven, pydantic-typed, in-process BIDS validator.",
+        description=_DESCRIPTION,
+        epilog=_EPILOG,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        add_help=False,
+    )
+    parser.add_argument(
+        "-h",
+        "--help",
+        action=_FullHelpAction,
+        help="show this help, including every command's options and examples, and exit",
     )
     parser.add_argument("--version", action="version", version=f"bidsval {__version__}")
-    subcommands = parser.add_subparsers(dest="command", metavar="<command>")
+    subcommands = parser.add_subparsers(dest="command", metavar="<command>", title="commands")
 
-    schema_cmd = subcommands.add_parser("schema", help="show the resolved schema version")
+    schema_cmd = subcommands.add_parser(
+        "schema",
+        help="show the resolved schema version and bundled versions",
+        description=_SCHEMA_DESCRIPTION,
+        epilog=_SCHEMA_EPILOG,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
     schema_cmd.add_argument(
         "--schema",
         default=None,
         metavar="SELECTOR",
-        help="bundled version (e.g. 1.11.1) or a path to a local schema.json",
+        help="schema to resolve: a BIDS version (e.g. 1.11.1), 'latest', a URL, a local "
+        "schema.json, or a YAML schema source directory (default: the bundled latest)",
     )
     schema_cmd.set_defaults(func=_run_schema)
 
-    eval_cmd = subcommands.add_parser("eval", help="evaluate a BIDS schema expression")
-    eval_cmd.add_argument("expression", help="the expression, e.g. \"suffix == 'T1w'\"")
+    eval_cmd = subcommands.add_parser(
+        "eval",
+        help="evaluate a BIDS schema expression",
+        description=_EVAL_DESCRIPTION,
+        epilog=_EVAL_EPILOG,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    eval_cmd.add_argument(
+        "expression", metavar="EXPR", help="the expression to evaluate, e.g. \"suffix == 'T1w'\""
+    )
     eval_cmd.add_argument(
         "--context",
         default="{}",
         metavar="JSON",
-        help="JSON object of context variables (default: {})",
+        help="JSON object of variables the expression can reference (default: {}). "
+        "Must be a JSON object, not an array or a scalar.",
     )
     eval_cmd.set_defaults(func=_run_eval)
 
-    validate_cmd = subcommands.add_parser("validate", help="validate a BIDS dataset")
-    validate_cmd.add_argument("dataset", help="path to the dataset root")
+    validate_cmd = subcommands.add_parser(
+        "validate",
+        help="validate a BIDS dataset",
+        description=_VALIDATE_DESCRIPTION,
+        epilog=_VALIDATE_EPILOG,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    validate_cmd.add_argument(
+        "dataset",
+        metavar="PATH",
+        help="path to the dataset root (the folder that holds dataset_description.json)",
+    )
     validate_cmd.add_argument(
         "--schema",
         default=None,
-        metavar="VERSION",
-        help="the schema to use, chosen by BIDS version (e.g. 1.11.1), 'latest', a "
-        "URL, or a local schema.json / source directory (default: the bundled latest)",
+        metavar="SELECTOR",
+        help="schema to validate against: a BIDS version (e.g. 1.11.1), 'latest', a URL, a "
+        "local schema.json, or a YAML schema source directory (default: the bundled latest). "
+        "Run 'bidsval schema' to list bundled versions.",
     )
     validate_cmd.add_argument(
-        "--subject", default=None, metavar="SUB", help="validate only this subject (e.g. sub-01)"
+        "--subject",
+        default=None,
+        metavar="SUB",
+        help="validate only this subject. Accepts sub-01 or just 01 (the sub- prefix is "
+        "added if missing).",
     )
     validate_cmd.add_argument(
-        "--headers", action="store_true", help="also check NIfTI headers (needs nibabel)"
+        "--headers",
+        action="store_true",
+        help="also validate NIfTI headers (image dimensions and the like). Requires nibabel; "
+        "these checks are skipped if it is not installed.",
     )
     validate_cmd.add_argument(
         "--output-type",
         default="text",
         metavar="TYPES",
-        help="comma-separated output formats: text, json, sarif, html, or all (default: text)",
+        help="comma-separated output formats: text, json, sarif, html, or 'all' "
+        "(default: text). Selecting more than one requires --out-dir.",
     )
     validate_cmd.add_argument(
         "--out-dir",
         metavar="DIR",
-        help="write each --output-type to DIR/report.<ext> (required for html or multiple types)",
+        help="write reports to this directory (created if needed), one report.<ext> per "
+        "--output-type. Required when more than one format is selected; a single format "
+        "prints to stdout.",
     )
     validate_cmd.add_argument(
         "--show",
         default="error,warning",
         metavar="LEVELS",
-        help="which severities to display: any of error, warning, ignore, or all "
-        "(default: error,warning). Does not change the pass/fail result.",
+        help="severities to display: any of error, warning, ignore, or 'all' "
+        "(default: error,warning). Filters the output only; it does not change validity "
+        "or the exit code.",
     )
     validate_cmd.set_defaults(func=_run_validate)
 
@@ -90,7 +286,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
     if not getattr(args, "command", None):
-        parser.print_help()
+        _print_full_help(parser)
         return 0
     return args.func(args)
 
