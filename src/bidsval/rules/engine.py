@@ -28,6 +28,7 @@ from ..expr import EvaluationError, evaluate_string
 from ..expr.functions import truthy
 from ..issues import Issue, RuleProvenance, Severity
 from ..schema import introspect
+from .guidance import entity_guidance, field_guidance, value_guidance
 from .tables import eval_columns
 from .values import validate_value
 
@@ -75,6 +76,8 @@ def _validate_present_values(schema: Namespace, context: Mapping[str, Any]) -> l
     several definitions is valid if it matches any of them, so context-specific
     duplicate names never cause a false positive."""
     is_json = context.get("extension") == ".json"
+    if is_json and not context.get("__json_ok__", True):
+        return []  # the JSON itself is malformed; integrity reports that instead
     data = context.get("json") if is_json else context.get("sidecar")
     if not isinstance(data, Mapping):
         return []
@@ -94,6 +97,7 @@ def _validate_present_values(schema: Namespace, context: Mapping[str, Any]) -> l
                     severity=Severity.ERROR,
                     location=location,
                     message=f"{field_name} {problems[0][0]}",
+                    suggestion=value_guidance(field_name, definitions[0]),
                     rule="objects.metadata",
                 )
             )
@@ -221,6 +225,12 @@ def _eval_fields(
     is_sidecar_rule = path.startswith("rules.sidecars")
     if is_sidecar_rule and context.get("extension") in _SIDECAR_EXEMPT_EXTENSIONS:
         return
+    # A malformed dataset_description.json (or other validated JSON) is reported as
+    # JSON_INVALID by the integrity check; do not also flag all its fields missing.
+    if not is_sidecar_rule and context.get("extension") == ".json" and not context.get(
+        "__json_ok__", True
+    ):
+        return
     data = context.get("sidecar") if is_sidecar_rule else context.get("json")
     if not isinstance(data, Mapping):
         return
@@ -243,7 +253,9 @@ def _eval_fields(
             continue
 
         issues.append(
-            _missing_field_issue(requirement, field_name, severity, context, path, is_sidecar_rule)
+            _missing_field_issue(
+                schema, requirement, field_name, severity, context, path, is_sidecar_rule
+            )
         )
 
 
@@ -266,6 +278,7 @@ def _field_severity(requirement: Any, context: Mapping[str, Any]) -> Severity:
 
 
 def _missing_field_issue(
+    schema: Namespace,
     requirement: Any,
     field_name: str,
     severity: Severity,
@@ -287,6 +300,7 @@ def _missing_field_issue(
         location=_location(context),
         message=f"missing {'required' if severity is Severity.ERROR else 'recommended'} "
         f"field {field_name!r}",
+        suggestion=field_guidance(schema, field_name),
         rule=path,
         fix={"action": "add_field", "field": field_name},
     )
@@ -317,6 +331,7 @@ def validate_basename(schema: Namespace, context: Mapping[str, Any], name: str) 
                     severity=Severity.ERROR,
                     location=_location(context),
                     message=f"value {value!r} for entity {short!r} does not match /{pattern}/",
+                    suggestion=entity_guidance(short, pattern),
                     rule="objects.entities",
                 )
             )

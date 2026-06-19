@@ -20,10 +20,13 @@ from pathlib import Path
 
 from .context import ContextBuilder
 from .files import BIDSFile, FileTree
+from .files.bidsignore import load_bidsignore
 from .issues import Issue, Severity
 from .report import FileVerdict, ValidationReport
-from .rules import apply_rules, validate_basename
+from .rules import apply_rules
 from .rules.bespoke import bespoke_checks
+from .rules.filenames import filename_checks
+from .rules.integrity import integrity_checks
 from .schema import SchemaSelector, bids_version, introspect, resolve, schema_version
 
 
@@ -69,6 +72,13 @@ def validate(
     if subjects is not None:
         wanted = set(subjects)
         files = [f for f in files if f.relpath.split("/", 1)[0] in wanted]
+
+    # Skip files the dataset (or the BIDS defaults) declares outside validation:
+    # stimuli/, code/, sourcedata/, logs, hidden files, and .bidsignore entries.
+    # They stay indexed in the tree (so existence checks still resolve), but are
+    # not validated, matching the reference validator.
+    ignore = load_bidsignore(root)
+    files = [f for f in files if not ignore.match(f.relpath)]
 
     for bids_file in files:
         report.files.append(_validate_one(schema_ns, builder, bids_file))
@@ -138,7 +148,8 @@ def _validate_one(schema_ns, builder: ContextBuilder, bids_file: BIDSFile) -> Fi
     try:
         context = builder.build(bids_file)
         verdict.issues.extend(bespoke_checks(bids_file, context, read_headers=builder.read_headers))
-        verdict.issues.extend(validate_basename(schema_ns, context, bids_file.name))
+        verdict.issues.extend(integrity_checks(bids_file, context))
+        verdict.issues.extend(filename_checks(schema_ns, context, bids_file))
         verdict.issues.extend(apply_rules(schema_ns, context))
     except Exception as error:  # never let one file abort the whole run
         verdict.issues.append(

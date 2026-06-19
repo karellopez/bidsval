@@ -25,6 +25,8 @@ def _issue_dict(issue: Issue) -> dict[str, Any]:
         out["subCode"] = issue.sub_code
     if issue.message:
         out["message"] = issue.message
+    if issue.suggestion:
+        out["suggestion"] = issue.suggestion
     if issue.rule:
         out["rule"] = issue.rule
     return out

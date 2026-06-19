@@ -11,7 +11,12 @@ def _line(issue: Issue) -> str:
     field = f" [{issue.sub_code}]" if issue.sub_code else ""
     message = f" - {issue.message}" if issue.message else ""
     where = issue.location or ""
-    return f"  {issue.severity.value.upper():7s} {issue.code}{field}  {where}{message}"
+    line = f"  {issue.severity.value.upper():7s} {issue.code}{field}  {where}{message}"
+    if issue.suggestion:
+        # The actionable hint: what the file/field/column should contain, with an
+        # example, indented under the finding so it is easy to read and to fix.
+        line += f"\n           how to fix: {issue.suggestion}"
+    return line
 
 
 def to_text(report: ValidationReport) -> str:

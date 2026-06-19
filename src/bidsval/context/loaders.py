@@ -20,11 +20,34 @@ from ..files import BIDSFile
 
 def load_json(bids_file: BIDSFile) -> dict[str, Any]:
     """Parse a JSON file to a dict, or ``{}`` if it cannot be read/parsed."""
+    data, _error = load_json_checked(bids_file)
+    return data
+
+
+def load_json_checked(bids_file: BIDSFile) -> tuple[dict[str, Any], str | None]:
+    """Parse a JSON file, returning ``(data, error_code)``.
+
+    ``error_code`` is ``None`` on success; otherwise it is one of the BIDS issue
+    codes describing why the file could not be used (``INVALID_FILE_ENCODING``,
+    ``JSON_INVALID``, ``JSON_NOT_AN_OBJECT``, ``FILE_READ``), so a caller can both
+    skip the unusable data and report a precise, actionable finding. ``data`` is
+    ``{}`` whenever ``error_code`` is set.
+    """
     try:
-        data = json.loads(bids_file.read_text())
-    except (OSError, ValueError):
-        return {}
-    return data if isinstance(data, dict) else {}
+        raw = bids_file.read_bytes()
+    except OSError:
+        return {}, "FILE_READ"
+    try:
+        text = raw.decode("utf-8")
+    except UnicodeDecodeError:
+        return {}, "INVALID_FILE_ENCODING"
+    try:
+        data = json.loads(text)
+    except ValueError:
+        return {}, "JSON_INVALID"
+    if not isinstance(data, dict):
+        return {}, "JSON_NOT_AN_OBJECT"
+    return data, None
 
 
 def load_columns(bids_file: BIDSFile, max_rows: int = 1000) -> dict[str, list[str]]:

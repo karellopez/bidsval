@@ -23,6 +23,7 @@ from typing import Any
 from bidsschematools.types.namespace import Namespace
 
 from ..issues import Fix, Issue, Severity
+from .guidance import column_guidance
 
 _NA = {"n/a", "", None}
 
@@ -59,6 +60,7 @@ def eval_columns(
                     severity=Severity.ERROR,
                     location=location,
                     message=f"required column {name!r} is missing",
+                    suggestion=column_guidance(schema, name),
                     rule=path,
                     fix=Fix(action="add_column", field=name),
                 )

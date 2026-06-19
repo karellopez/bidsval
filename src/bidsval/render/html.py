@@ -34,6 +34,8 @@ h1 { font-size: 20px; margin: 0 0 2px; }
 .code { font-family: ui-monospace,SFMono-Regular,Menlo,monospace; font-size:12.5px; }
 .code .sub { color:var(--muted); font-size:11px; }
 .msg { color:#33363b; white-space:pre-wrap; }
+.hint { color:var(--muted); font-size:12.5px; margin-top:5px; white-space:pre-wrap; }
+.hint b { color:#33363b; font-weight:600; }
 .empty { color:var(--ok); font-weight:600; padding:8px 0; }
 footer { color:var(--muted); font-size:12px; margin-top:26px; }
 """
@@ -46,11 +48,16 @@ def _pill(severity: Severity) -> str:
 def _issue_row(issue: Issue) -> str:
     sub = f'<span class="sub"> [{escape(issue.sub_code)}]</span>' if issue.sub_code else ""
     message = escape(issue.message) if issue.message else ""
+    hint = (
+        f'<div class="hint"><b>How to fix:</b> {escape(issue.suggestion)}</div>'
+        if issue.suggestion
+        else ""
+    )
     return (
         '<div class="issue">'
         f"{_pill(issue.severity)}"
         f'<div class="code">{escape(issue.code)}{sub}</div>'
-        f'<div class="msg">{message}</div>'
+        f'<div class="msg">{message}{hint}</div>'
         "</div>"
     )
 

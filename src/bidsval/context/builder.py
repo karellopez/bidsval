@@ -15,11 +15,12 @@ from bidsschematools.types.namespace import Namespace
 
 from ..expr.functions import EXISTS_RESOLVER_KEY
 from ..files import BIDSFile, FileTree
+from ..files.bidsignore import load_bidsignore
 from ..schema import introspect
 from .associations import build_associations
 from .entities import parse_filename
 from .inheritance import merged_sidecar
-from .loaders import load_columns, load_json, load_nifti_header
+from .loaders import load_columns, load_json, load_json_checked, load_nifti_header
 
 
 class ContextBuilder:
@@ -72,6 +73,9 @@ class ContextBuilder:
                 "participant_id": participant_id,
             },
             "tree": self.tree,
+            # The .bidsignore matcher (or None); filename checks use it to suppress
+            # NOT_INCLUDED for files the dataset has declared as outside BIDS.
+            "bidsignore": load_bidsignore(self.tree.root),
         }
 
     @property
@@ -87,8 +91,11 @@ class ContextBuilder:
         is_json = extension == ".json"
         is_tsv = extension in (".tsv", ".tsv.gz")
 
+        json_data, json_error = load_json_checked(bids_file) if is_json else ({}, None)
+
         context: dict[str, Any] = {
             "path": "/" + bids_file.relpath,
+            "__name__": bids_file.name,
             "size": bids_file.size(),
             "entities": short_entities,
             "datatype": datatype,
@@ -96,7 +103,11 @@ class ContextBuilder:
             "extension": extension,
             "modality": introspect.modality_for(self.schema, datatype),
             "sidecar": merged_sidecar(self.schema, self.tree, bids_file),
-            "json": load_json(bids_file) if is_json else {},
+            "json": json_data,
+            # Whether this file (if it is JSON) parsed as a JSON object. The rule
+            # engine skips field checks on a malformed JSON; integrity reports why.
+            "__json_ok__": json_error is None,
+            "__json_error__": json_error,
             "columns": self._load_columns(bids_file, extension) if is_tsv else {},
             "nifti_header": (
                 load_nifti_header(bids_file)

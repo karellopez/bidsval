@@ -30,6 +30,8 @@ def _all_issues(report: ValidationReport) -> list[Issue]:
 
 def _result(issue: Issue) -> dict[str, Any]:
     text = issue.message or issue.code
+    if issue.suggestion:
+        text = f"{text}\n\nHow to fix: {issue.suggestion}"
     result: dict[str, Any] = {
         "ruleId": issue.code,
         "level": _LEVEL.get(issue.severity, "warning"),
