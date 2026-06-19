@@ -45,22 +45,22 @@ def _vocab(schema: Namespace) -> dict[str, Any]:
     # Suffix and extension *values* (the objects are keyed by display name; the
     # real token is in ``.value``).
     suffixes = {str(v.get("value", k)) for k, v in objects["suffixes"].items()}
-    extensions = sorted(
-        {str(v.get("value", k)) for k, v in objects["extensions"].items()},
-        key=len,
-        reverse=True,  # longest first so ".nii.gz" wins over ".gz"/".nii"
-    )
-
-    datatypes = set(objects["datatypes"].keys())
+    raw_extensions = {str(v.get("value", k)) for k, v in objects["extensions"].items()}
 
     # Directory-based recordings (CTF ``.ds``, MEF ``.mefd``, OME-Zarr ...): the
     # schema marks them with an extension value ending in "/". They are single
     # units - their internal files are not validated individually.
     directory_recordings = {
-        str(v["value"]).rstrip("/")
-        for v in objects["extensions"].values()
-        if str(v.get("value", "")).endswith("/") and str(v.get("value", "")).rstrip("/")
+        ext.rstrip("/") for ext in raw_extensions if ext.endswith("/") and ext.rstrip("/")
     }
+
+    # The directory-recording extensions are included (without the trailing "/") so
+    # a recording like ``sub-01_task-rest_meg.ds`` parses to suffix ``meg`` and
+    # extension ``.ds`` rather than a bogus suffix. Longest first so ``.nii.gz`` wins
+    # over ``.gz`` and ``.ome.zarr`` over ``.zarr``.
+    extensions = sorted(raw_extensions | directory_recordings, key=len, reverse=True)
+
+    datatypes = set(objects["datatypes"].keys())
 
     # Metadata field defs grouped by their actual JSON name (a name can have
     # several context-specific defs, e.g. "type__channels"); used to validate the

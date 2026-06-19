@@ -37,6 +37,11 @@ def eval_columns(
     columns = context.get("columns")
     if not isinstance(columns, Mapping) or not columns:
         return []  # not a populated TSV; nothing to check
+    if str(context.get("extension", "")) == ".tsv.gz":
+        # Gzipped TSVs (physio, stim) are headerless: their column names come from
+        # the sidecar's "Columns" field, not a header row. Reading the first data
+        # row as a header would mis-name every column, so skip column checks here.
+        return []
 
     location = str(context.get("path", "")).lstrip("/")
     object_columns = schema["objects"].get("columns", {})
@@ -112,6 +117,7 @@ def eval_columns(
                 )
 
     issues += _pseudo_age(columns, location, path)
+    issues += _index_unique(rule, object_columns, columns, location, path)
 
     # Numeric value types (safe coercion check only).
     for name, (definition, _requirement) in defined.items():
@@ -124,6 +130,37 @@ def eval_columns(
                 issues.append(issue)
 
     return issues
+
+
+def _index_unique(
+    rule: Mapping[str, Any],
+    object_columns: Mapping[str, Any],
+    columns: Mapping[str, list[Any]],
+    location: str,
+    path: str,
+) -> list[Issue]:
+    """The combination of the rule's index columns must be unique across rows."""
+    keys = [str(k) for k in rule.get("index_columns", [])]
+    names = [str(object_columns.get(k, {}).get("name", k)) for k in keys]
+    if not names or any(name not in columns for name in names):
+        return []  # only check when every index column is present
+    seen: set[tuple] = set()
+    for row in zip(*(columns[name] for name in names), strict=False):
+        if row in seen:
+            label = " + ".join(names)
+            return [
+                Issue(
+                    code="TSV_INDEX_VALUE_NOT_UNIQUE",
+                    sub_code=label,
+                    severity=Severity.ERROR,
+                    location=location,
+                    message=f"the index column(s) {label} must be unique, but a value repeats",
+                    suggestion=f"Make every row's {label} value unique (it identifies the row).",
+                    rule=path,
+                )
+            ]
+        seen.add(row)
+    return []
 
 
 def _check_numeric_column(

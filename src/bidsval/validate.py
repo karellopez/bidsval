@@ -82,16 +82,17 @@ def validate(
     ignore = load_bidsignore(root)
     files = [f for f in files if not ignore.match(f.relpath)]
 
-    # As each file is validated, record which stimuli it references, so the
-    # dataset-level checks can flag stimuli that nothing uses.
+    # As each file is validated, record which sidecars and stimuli it uses, so the
+    # dataset-level checks can flag the ones nothing uses.
+    viewed_json: set[str] = set()
     viewed_stimuli: set[str] = set()
     for bids_file in files:
         verdict, context = _validate_one(schema_ns, builder, bids_file)
         report.files.append(verdict)
         if context is not None:
-            collect_viewed(bids_file, context, viewed_stimuli)
+            collect_viewed(schema_ns, tree, bids_file, context, viewed_json, viewed_stimuli)
 
-    report.dataset_issues.extend(dataset_checks(tree, files, viewed_stimuli))
+    report.dataset_issues.extend(dataset_checks(tree, files, viewed_json, viewed_stimuli))
 
     report.recompute()
     return report

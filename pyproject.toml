@@ -42,9 +42,10 @@ dependencies = [
     "pydantic>=2,<=2.13.4",
 
     # Content readers.
-    "nibabel>=5.0,<=5.4.2",   # NIfTI headers (used with --headers)
+    "nibabel>=5.0,<=5.4.2",   # NIfTI headers (read by default)
     "pandas>=2.0,<3.0",       # TSV columns (pandas 3 changes string dtype: cap < 3.0)
     "mne>=1.6,<=1.12.1",      # EEG / MEG / iEEG readers (for forthcoming content checks)
+    "pyyaml>=5.4,<=6.0.3",    # CITATION.cff parsing
 ]
 
 [project.optional-dependencies]

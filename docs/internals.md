@@ -996,9 +996,12 @@ Every code bidsval can report, where it comes from, and its severity.
 | `EMPTY_FILE` | error | `rules/bespoke.py` | a 0-byte file |
 | `NIFTI_HEADER_UNREADABLE` | warning | `rules/bespoke.py` | the NIfTI header could not be read (headers are read by default; `--no-headers` to skip) |
 | `CASE_COLLISION` | error | `rules/dataset_checks.py` | two files differ only by letter case |
+| `SIDECAR_WITHOUT_DATAFILE` | error | `rules/dataset_checks.py` | a JSON sidecar applies to no data file |
 | `UNUSED_STIMULUS` | warning | `rules/dataset_checks.py` | a file in `stimuli/` is referenced by no events.tsv |
+| `CITATION_CFF_VALIDATION_ERROR` | error | `rules/citation.py` | `CITATION.cff` is not valid YAML or is missing required keys |
 | `TSV_ADDITIONAL_COLUMNS_MUST_DEFINE` | error | `rules/tables.py` | an extra column is not documented in the sidecar (where the rule requires it) |
 | `TSV_PSEUDO_AGE_DEPRECATED` | warning | `rules/tables.py` | the deprecated `89+` value in an `age` column |
+| `TSV_INDEX_VALUE_NOT_UNIQUE` | error | `rules/tables.py` | an index column's values are not unique |
 | `JSON_INVALID` | error | `rules/integrity.py` | a `.json` file is not valid JSON |
 | `JSON_NOT_AN_OBJECT` | error | `rules/integrity.py` | a `.json` file does not contain a single object |
 | `INVALID_FILE_ENCODING` | error | `rules/integrity.py` | a `.json` file is not valid UTF-8 text |

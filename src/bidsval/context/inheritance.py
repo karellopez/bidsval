@@ -44,6 +44,26 @@ def merged_sidecar(schema: Namespace, tree: FileTree, data_file: BIDSFile) -> di
     return merged
 
 
+def applicable_sidecar_files(schema: Namespace, tree: FileTree, data_file: BIDSFile) -> list[str]:
+    """The relpaths of the JSON sidecars that apply to ``data_file`` (one per level).
+
+    Used to mark sidecars as "in use", so a sidecar that applies to no data file can
+    be reported. Empty for a JSON file or a file with no suffix.
+    """
+    name = data_file.name
+    if name.endswith(".json"):
+        return []
+    source_entities, source_suffix, _ = parse_filename(schema, name)
+    if not source_suffix:
+        return []
+    out: list[str] = []
+    for dir_relpath in tree.ancestor_dirs(data_file.relpath):
+        chosen = _best_sidecar(schema, tree, dir_relpath, source_entities, source_suffix)
+        if chosen is not None:
+            out.append(chosen.relpath)
+    return out
+
+
 def _best_sidecar(
     schema: Namespace,
     tree: FileTree,
