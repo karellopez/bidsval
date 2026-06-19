@@ -7,9 +7,10 @@ contains. It runs with no external runtime, returns typed results, and validates
 a whole dataset, a single subject, a single file, or a single expression.
 
 - [Usage](usage.md) - install, the CLI, the Python API.
+- [CLI reference](cli-reference.md) - every command and option, with examples and exit codes.
 - [Schema selection](schema-selection.md) - choosing a schema (the single `--schema` selector).
 - [Output formats](output-formats.md) - `--output-type`, `--out-dir`, `--show`.
-- [Architecture](architecture.md) - how it works, the modules, and the design invariants.
+- [How it works](internals.md) - the complete technical reference: design, dependencies, every layer, flowcharts, and a glossary.
 
 ## Design in one paragraph
 

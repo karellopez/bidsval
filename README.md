@@ -22,9 +22,8 @@ newer schema and the newer rules apply with no code change.
 ## Install
 
 ```shell
-pip install -e ".[dev]"          # base + test/lint tooling
-pip install -e ".[content]"      # add NIfTI/TSV readers (for content checks)
-pip install -e ".[m-eeg]"        # add EEG/MEG recording readers
+pip install -e .                 # bidsval and all required readers (nibabel, pandas, mne)
+pip install -e ".[dev]"          # also the test and lint tooling
 ```
 
 ## Validate a dataset
@@ -157,9 +156,13 @@ text / JSON / SARIF / HTML outputs.
 
 ## Documentation
 
-See [`docs/`](docs/index.md): [usage](docs/usage.md),
-[schema selection](docs/schema-selection.md),
-[output formats](docs/output-formats.md), and [architecture](docs/architecture.md).
+See [`docs/`](docs/index.md):
+
+- [usage](docs/usage.md) - install, the CLI, the Python API.
+- [CLI reference](docs/cli-reference.md) - every command and option, with examples and exit codes.
+- [schema selection](docs/schema-selection.md) - the single `--schema` selector.
+- [output formats](docs/output-formats.md) - `--output-type`, `--out-dir`, `--show`.
+- [how it works](docs/internals.md) - the complete technical reference: design, dependencies, every layer, flowcharts, and a glossary.
 
 ## Develop
 

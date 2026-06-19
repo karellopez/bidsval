@@ -3,14 +3,15 @@
 ## Install
 
 ```shell
-pip install -e ".[dev]"        # base + test/lint tooling
-pip install -e ".[content]"    # add NIfTI/TSV readers (nibabel, pandas)
-pip install -e ".[m-eeg]"      # add EEG/MEG recording readers (mne)
+pip install -e .               # bidsval and all required readers (nibabel, pandas, mne)
+pip install -e ".[dev]"        # also the test and lint tooling
 ```
 
-`bidsval` (core) depends only on `bidsschematools` and `pydantic`. The `content`
-extra enables reading NIfTI headers and TSV columns; without it, those checks are
-skipped rather than failing.
+bidsval requires `bidsschematools` and `pydantic` (the schema engine and the typed
+result model) plus the content readers `nibabel`, `pandas`, and `mne`, so a default
+install can read NIfTI headers, TSV columns, and EEG/MEG recordings out of the box.
+If a reader is ever missing, or a file is malformed, the affected check is skipped
+rather than failing. See [how it works: dependencies](internals.md#5-dependencies-and-why-they-are-what-they-are).
 
 ## Command line
 
@@ -25,6 +26,7 @@ bidsval eval "<expression>" --context '<json>'   # evaluate one schema expressio
 `bidsval validate` exits 0 when there are no errors, 1 when there are, and 2 on a
 usage/IO error, so it drops straight into CI.
 
+The [CLI reference](cli-reference.md) documents every command and option in full.
 Selecting output and which findings to show is covered in
 [output formats](output-formats.md); selecting a schema in
 [schema selection](schema-selection.md).

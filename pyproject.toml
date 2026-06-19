@@ -7,7 +7,7 @@ name = "bidsval"
 version = "0.0.1"
 description = "A schema-driven, pydantic-typed, in-process BIDS validator."
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.10,<3.15"
 license = { text = "MIT" }
 authors = [{ name = "bidsval contributors" }]
 keywords = ["BIDS", "validation", "neuroimaging", "schema", "pydantic"]
@@ -19,20 +19,35 @@ classifiers = [
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
     "Topic :: Scientific/Engineering",
 ]
 
-# Core stays deliberately small: the schema (and its expression-language parser)
-# come from bidsschematools; results are typed with pydantic. Heavier readers
-# used for content checks (tier 3) are optional extras so the base install is lean.
+# Dependencies.
+# Bounds strategy (same as BIDS-Manager):
+#   lower bound = oldest version that works with any supported Python (3.10+).
+#   upper bound = latest version tested in the reference env. On older Pythons
+#                 pip picks the newest release that fits both the version range
+#                 AND that Python's compatibility.
+# The content readers (nibabel, pandas, mne) are REQUIRED, not optional, so a
+# default install validates file contents out of the box. The loaders still
+# degrade safely (return empty/None) if a reader is ever missing or a file is
+# malformed, so a rule that needs that content simply does not fire.
 dependencies = [
-    "bidsschematools>=1.0",
-    "pydantic>=2",
+    # Schema engine: the BIDS schema and its expression-language parser. The
+    # keystone of the architecture; all BIDS knowledge enters through here.
+    "bidsschematools>=1.0,<=1.2.2",
+
+    # Strongly-typed, serialisable result model (Issue / ValidationReport).
+    "pydantic>=2,<=2.13.4",
+
+    # Content readers.
+    "nibabel>=5.0,<=5.4.2",   # NIfTI headers (used with --headers)
+    "pandas>=2.0,<3.0",       # TSV columns (pandas 3 changes string dtype: cap < 3.0)
+    "mne>=1.6,<=1.12.1",      # EEG / MEG / iEEG readers (for forthcoming content checks)
 ]
 
 [project.optional-dependencies]
-content = ["nibabel>=5", "pandas>=2"]   # tier-3 NIfTI / TSV content readers
-m-eeg = ["mne>=1.6"]                     # tier-3 EEG/MEG recording readers
 dev = ["pytest>=7", "ruff>=0.1"]
 
 [project.scripts]
