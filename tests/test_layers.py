@@ -79,16 +79,16 @@ def test_tabular_additional_column_and_bad_value(tmp_path) -> None:
     assert ("TSV_VALUE_INCORRECT_TYPE", "onset") in codes
 
 
-def test_empty_file_is_a_warning_with_explanation(tmp_path) -> None:
+def test_empty_file_is_an_error_with_explanation(tmp_path) -> None:
     _dataset(tmp_path)
     anat = tmp_path / "sub-01" / "anat"
     anat.mkdir(parents=True)
     (anat / "sub-01_T1w.nii.gz").write_text("")  # 0 bytes
     report = validate(tmp_path)
     empty = [i for f in report.files for i in f.issues if i.code == "EMPTY_FILE"]
-    assert empty and empty[0].severity.value == "warning"
-    assert empty[0].suggestion and "placeholder" in empty[0].suggestion
-    assert empty[0].fix is not None
+    assert empty and empty[0].severity.value == "error"  # matches the reference
+    assert empty[0].suggestion and empty[0].fix is not None
+    assert not report.is_valid
 
 
 def test_sourcedata_and_code_are_not_validated(tmp_path) -> None:

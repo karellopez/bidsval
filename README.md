@@ -55,20 +55,23 @@ bidsval validate /path/to/dataset
 # Validate one subject; also check NIfTI headers:
 bidsval validate /path/to/dataset --subject sub-01 --headers
 
-# Machine-readable to stdout:
-bidsval validate /path/to/dataset --format json
-bidsval validate /path/to/dataset --format sarif      # for CI / IDE code scanning
+# Pick the output type (independent of where it goes):
+bidsval validate /path/to/dataset --output-type json     # JSON to stdout
+bidsval validate /path/to/dataset --output-type sarif    # SARIF to stdout (CI / IDE code scanning)
 
-# Write report files (any combination):
-bidsval validate /path/to/dataset --html report.html --json report.json --sarif report.sarif
+# Write report files: --out-dir holds report.<ext> for each selected type:
+bidsval validate /path/to/dataset --output-type html --out-dir reports/   # reports/report.html
+bidsval validate /path/to/dataset --output-type all  --out-dir reports/   # report.txt/.json/.sarif/.html
 
-# Write every format at once into a directory (report.json/.sarif/.html):
-bidsval validate /path/to/dataset --out-dir reports/
+# Show only the severities you care about (does not change pass/fail):
+bidsval validate /path/to/dataset --show error           # errors only
 ```
 
 Flags: `--schema <version|url|path>`, `--subject sub-01`, `--headers`
-(also check NIfTI headers, needs nibabel), `--format text|json|sarif` (stdout),
-`--json/--sarif/--html PATH` (report files), `--out-dir DIR` (all formats).
+(also check NIfTI headers, needs nibabel), `--output-type text|json|sarif|html|all`
+(default `text`; one type prints to stdout, several need `--out-dir`),
+`--out-dir DIR` (write `report.<ext>` per type), `--show error,warning,ignore,all`
+(filter displayed findings; default `error,warning`).
 
 ## Choose a schema version
 
@@ -151,6 +154,12 @@ text / JSON / SARIF / HTML outputs.
    validation; derivatives recursion; HED.
 3. The ahead-of-market features: requirement-level completeness per subject,
    reasoned waivers, explain mode, and one-click fixes.
+
+## Documentation
+
+See [`docs/`](docs/index.md): [usage](docs/usage.md),
+[schema selection](docs/schema-selection.md),
+[output formats](docs/output-formats.md), and [architecture](docs/architecture.md).
 
 ## Develop
 

@@ -1,11 +1,8 @@
 """Per-file checks that are not expressed in the schema as rules.
 
 These mirror what the reference validator hard-codes (empty files, unreadable
-NIfTI headers), but bidsval reports them more usefully: as warnings (not hard
-errors), with an explanation of what the finding does and does not mean, and a
-machine-actionable fix. The point is to be clear when something is a content or
-readability issue rather than a BIDS structure violation - for example, the
-empty placeholder files that example datasets deliberately ship.
+NIfTI headers), but bidsval reports them more usefully: with an explanation of
+what the finding does and does not mean, and a machine-actionable fix.
 """
 
 from __future__ import annotations
@@ -24,18 +21,23 @@ def bespoke_checks(
     issues: list[Issue] = []
     location = bids_file.relpath
 
+    # A symlink (e.g. an unfetched git-annex file) has no local content to judge;
+    # do not flag it as empty or try to read its header.
+    if bids_file.is_symlink:
+        return issues
+
     if bids_file.size() == 0:
+        # An empty file has no data, which is a violation (matches the reference).
         issues.append(
             Issue(
                 code="EMPTY_FILE",
-                severity=Severity.WARNING,
+                severity=Severity.ERROR,
                 location=location,
                 message="file is empty (0 bytes): it exists but contains no data",
                 suggestion=(
-                    "An empty file is often an intentional placeholder (example datasets ship "
-                    "these). This is a content issue, not a filename or structure violation - the "
-                    "name and location are valid, but there is no data. Replace it with real data "
-                    "if it should not be empty."
+                    "The file name and location are valid, but there is no content. Replace it "
+                    "with real data. (Some example datasets ship empty placeholder files; those "
+                    "datasets are reported invalid for this reason.)"
                 ),
                 fix=Fix(action="replace_empty_file", label="Provide real data for this file"),
             )

@@ -33,6 +33,11 @@ class BIDSFile:
         """The POSIX relative path of the containing directory (``""`` at root)."""
         return self.relpath.rsplit("/", 1)[0] if "/" in self.relpath else ""
 
+    @property
+    def is_symlink(self) -> bool:
+        """Whether this entry is a symlink (e.g. an unfetched git-annex file)."""
+        return self.abspath.is_symlink()
+
     def size(self) -> int:
         try:
             return self.abspath.stat().st_size
@@ -50,18 +55,21 @@ class BIDSFile:
 class FileTree:
     """An indexed view of every (non-hidden) file under a dataset root."""
 
-    def __init__(self, root: str | Path) -> None:
+    def __init__(self, root: str | Path, directory_recordings: tuple[str, ...] = ()) -> None:
         self.root = Path(root)
+        # Extensions of directory-based recordings (``.ds``, ``.mefd`` ...). Such a
+        # directory is indexed as ONE entry; its internal files are not validated.
+        self._recording_exts = tuple(e for e in directory_recordings if e)
         self._index: dict[str, BIDSFile] = {}
-        # Directory paths are tracked too, so a reference to a directory-based
-        # recording (CTF ``.ds``, EGI ``.mff`` ...) resolves as existing.
+        # Directory paths, so a reference to a directory recording resolves as existing.
         self._dirs: set[str] = set()
-        # Files grouped by their parent directory, built once so per-directory
-        # lookups (inheritance, associations) are O(1) instead of scanning.
+        # Files grouped by parent directory, built once for O(1) per-dir lookups.
         self._by_dir: dict[str, list[BIDSFile]] = {}
         if self.root.is_dir():
             for path in self.root.rglob("*"):
-                if not path.is_file():
+                # Include regular files and symlinks: an unfetched git-annex file
+                # (a symlink) still exists as part of the dataset structure.
+                if not (path.is_file() or path.is_symlink()):
                     continue
                 relpath = path.relative_to(self.root).as_posix()
                 parts = relpath.split("/")
@@ -69,12 +77,28 @@ class FileTree:
                     continue  # skip hidden files / anything under a hidden dir
                 if parts[0] in _RESERVED_TOP_DIRS:
                     continue  # not validated as part of the dataset
-                bids_file = BIDSFile(relpath, path)
-                self._index[relpath] = bids_file
-                self._by_dir.setdefault(bids_file.parent, []).append(bids_file)
-                parts = relpath.split("/")
-                for depth in range(1, len(parts)):
-                    self._dirs.add("/".join(parts[:depth]))
+                recording = self._enclosing_recording(parts)
+                if recording is not None:
+                    self._add(recording)  # index the recording dir once; skip its contents
+                    continue
+                self._add(relpath)
+
+    def _enclosing_recording(self, parts: list[str]) -> str | None:
+        """The relpath of the nearest ancestor that is a directory recording, if any."""
+        for depth, name in enumerate(parts):
+            if any(name.endswith(ext) for ext in self._recording_exts):
+                return "/".join(parts[: depth + 1])
+        return None
+
+    def _add(self, relpath: str) -> None:
+        if relpath in self._index:
+            return
+        bids_file = BIDSFile(relpath, self.root / relpath)
+        self._index[relpath] = bids_file
+        self._by_dir.setdefault(bids_file.parent, []).append(bids_file)
+        parts = relpath.split("/")
+        for depth in range(1, len(parts)):
+            self._dirs.add("/".join(parts[:depth]))
 
     def files(self) -> list[BIDSFile]:
         """Every indexed file, sorted by path for stable output."""

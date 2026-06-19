@@ -24,7 +24,12 @@ from .issues import Issue, Severity
 from .report import FileVerdict, ValidationReport
 from .rules import apply_rules, validate_basename
 from .rules.bespoke import bespoke_checks
-from .schema import SchemaSelector, bids_version, resolve, schema_version
+from .schema import SchemaSelector, bids_version, introspect, resolve, schema_version
+
+
+def _file_tree(root: str | Path, schema_ns) -> FileTree:
+    """A FileTree that knows the schema's directory-recording extensions."""
+    return FileTree(root, directory_recordings=tuple(introspect.directory_recordings(schema_ns)))
 
 
 def validate(
@@ -42,7 +47,7 @@ def validate(
     if given, restricts validation to those ``sub-*`` directories.
     """
     schema_ns = resolve(schema)
-    tree = FileTree(root)
+    tree = _file_tree(root, schema_ns)
     report = ValidationReport(
         dataset_root=Path(root),
         bids_version=bids_version(schema_ns),
@@ -105,7 +110,7 @@ def validate_file(
     work, but only the named file's findings are returned.
     """
     schema_ns = resolve(schema)
-    tree = FileTree(root)
+    tree = _file_tree(root, schema_ns)
     bids_file = tree.get(relpath)
     if bids_file is None:
         verdict = FileVerdict(path=Path(relpath))

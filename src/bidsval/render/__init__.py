@@ -16,5 +16,10 @@ from __future__ import annotations
 from .html import to_html
 from .json import to_dict, to_json
 from .sarif import to_sarif
+from .text import to_text
 
-__all__ = ["to_dict", "to_json", "to_sarif", "to_html"]
+# Format name -> renderer + file extension. Single source for the CLI.
+RENDERERS = {"text": to_text, "json": to_json, "sarif": to_sarif, "html": to_html}
+EXTENSIONS = {"text": "txt", "json": "json", "sarif": "sarif", "html": "html"}
+
+__all__ = ["to_dict", "to_json", "to_sarif", "to_html", "to_text", "RENDERERS", "EXTENSIONS"]

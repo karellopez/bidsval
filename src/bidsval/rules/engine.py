@@ -65,7 +65,39 @@ def apply_rules(schema: Namespace, context: Mapping[str, Any]) -> list[Issue]:
     for group in _EVALUATED_GROUPS:
         if group in rules:
             _descend(schema, rules[group], context, issues, f"rules.{group}")
+    issues.extend(_validate_present_values(schema, context))
     return _dedupe(issues)
+
+
+def _validate_present_values(schema: Namespace, context: Mapping[str, Any]) -> list[Issue]:
+    """Validate the value of EVERY present sidecar/json field against its schema
+    metadata definition (not only fields a rule names). A field whose name maps to
+    several definitions is valid if it matches any of them, so context-specific
+    duplicate names never cause a false positive."""
+    is_json = context.get("extension") == ".json"
+    data = context.get("json") if is_json else context.get("sidecar")
+    if not isinstance(data, Mapping):
+        return []
+    by_name = introspect.metadata_by_name(schema)
+    location = _location(context)
+    issues: list[Issue] = []
+    for field_name, value in data.items():
+        definitions = by_name.get(field_name)
+        if not definitions:
+            continue
+        problems = [validate_value(value, definition) for definition in definitions]
+        if all(problems):  # the value fails every definition for this name
+            issues.append(
+                Issue(
+                    code="JSON_SCHEMA_VALIDATION_ERROR",
+                    sub_code=field_name,
+                    severity=Severity.ERROR,
+                    location=location,
+                    message=f"{field_name} {problems[0][0]}",
+                    rule="objects.metadata",
+                )
+            )
+    return issues
 
 
 def _dedupe(issues: list[Issue]) -> list[Issue]:
@@ -200,19 +232,7 @@ def _eval_fields(
         meta_def = metadata.get(field_key, {})
         field_name = str(meta_def.get("name", field_key))
         if field_name in data:
-            # Present: validate the value against the field's schema definition.
-            for problem in validate_value(data[field_name], meta_def):
-                issues.append(
-                    Issue(
-                        code="JSON_SCHEMA_VALIDATION_ERROR",
-                        sub_code=field_name,
-                        severity=Severity.ERROR,
-                        location=_location(context),
-                        message=f"{field_name} {problem}",
-                        rule=path,
-                    )
-                )
-            continue
+            continue  # presence satisfied; value validation is a separate global pass
 
         severity = _field_severity(requirement, context)
         if severity is Severity.IGNORE:

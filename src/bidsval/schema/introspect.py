@@ -53,6 +53,24 @@ def _vocab(schema: Namespace) -> dict[str, Any]:
 
     datatypes = set(objects["datatypes"].keys())
 
+    # Directory-based recordings (CTF ``.ds``, MEF ``.mefd``, OME-Zarr ...): the
+    # schema marks them with an extension value ending in "/". They are single
+    # units - their internal files are not validated individually.
+    directory_recordings = {
+        str(v["value"]).rstrip("/")
+        for v in objects["extensions"].values()
+        if str(v.get("value", "")).endswith("/") and str(v.get("value", "")).rstrip("/")
+    }
+
+    # Metadata field defs grouped by their actual JSON name (a name can have
+    # several context-specific defs, e.g. "type__channels"); used to validate the
+    # value of any present sidecar field, not only those a rule names.
+    metadata_by_name: dict[str, list[Any]] = {}
+    for info in objects.get("metadata", {}).values():
+        name = info.get("name")
+        if name:
+            metadata_by_name.setdefault(str(name), []).append(info)
+
     # Datatype -> modality, from rules.modalities[*].datatypes.
     datatype_modality: dict[str, str] = {}
     for modality, info in schema.get("rules", {}).get("modalities", {}).items():
@@ -66,9 +84,21 @@ def _vocab(schema: Namespace) -> dict[str, Any]:
         "extensions": extensions,
         "datatypes": datatypes,
         "datatype_modality": datatype_modality,
+        "metadata_by_name": metadata_by_name,
+        "directory_recordings": directory_recordings,
     }
     _MEMO[id(schema)] = vocab
     return vocab
+
+
+def directory_recordings(schema: Namespace) -> set[str]:
+    """Extensions of directory-based recordings (e.g. ``.ds``, ``.mefd``)."""
+    return _vocab(schema)["directory_recordings"]
+
+
+def metadata_by_name(schema: Namespace) -> dict[str, list[Any]]:
+    """Metadata field definitions grouped by JSON field name."""
+    return _vocab(schema)["metadata_by_name"]
 
 
 def datatypes(schema: Namespace) -> set[str]:

@@ -66,6 +66,27 @@ class ValidationReport(BaseModel):
         """True when the dataset has no error-level findings."""
         return self.counts.get("error", 0) == 0
 
+    def filtered(self, severities: set[Severity]) -> ValidationReport:
+        """A copy keeping only findings whose severity is in ``severities``.
+
+        Used to show only selected requirement levels; the original report's
+        validity/exit status is unaffected (validity always depends on errors).
+        """
+        kept = ValidationReport(
+            dataset_root=self.dataset_root,
+            bids_version=self.bids_version,
+            schema_version=self.schema_version,
+        )
+        kept.dataset_issues = DatasetIssues(
+            issues=[i for i in self.dataset_issues.issues if i.severity in severities]
+        )
+        for verdict in self.files:
+            keep = [i for i in verdict.issues if i.severity in severities]
+            if keep:
+                kept.files.append(FileVerdict(path=verdict.path, issues=keep))
+        kept.recompute()
+        return kept
+
 
 def _highest(severities: list[Severity]) -> Severity | None:
     """Return the most serious severity, or ``None`` for an empty list."""
