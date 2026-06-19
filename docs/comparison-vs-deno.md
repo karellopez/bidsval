@@ -161,3 +161,92 @@ bidsval validate /path/to/dataset --output-type json --show all > bidsval.json
 
 For a fair comparison on a pre-1.11 dataset, give both the same schema (the
 reference with `-s`, bidsval with `--schema`).
+
+---
+
+# Update: matched-schema comparison and added checks
+
+The results above let the reference pick each dataset's declared `BIDSVersion`,
+while bidsval used its default (1.11.1). That is unfair for older datasets. This
+section re-runs the comparison with **the same schema for both validators
+regardless of the dataset's declared version** (the reference forced to `-s v1.11.1`,
+bidsval at its default 1.11.1, both schema 1.2.1), and records the checks added since
+the first report.
+
+## Why matched-schema matters
+
+Forcing one schema is the honest test, and it changed the conclusions. Two
+differences that the mismatched run had written off as "schema evolution" turned out
+to be **real bidsval false positives** once both validators ran 1.11.1. They have
+been fixed (below). The lesson: always match schemas before judging a difference.
+
+## Checks added since the first report
+
+- **`SIDECAR_WITHOUT_DATAFILE`** (now active). It was deferred before because
+  directory recordings (CTF `.ds`, OME-Zarr `.ome.zarr`) did not parse, so their
+  sidecars looked unused. The schema's directory-recording extensions are now part
+  of the extension list, so `sub-01_task-rest_meg.ds` parses to suffix `meg`. A
+  sidecar counts as used if a data file inherits it, if it is an association (a
+  `coordsystem` in the same directory, even with extra entities like `space-`), and
+  atlas `*_description.json` descriptors are exempt.
+- **`TSV_INDEX_VALUE_NOT_UNIQUE`** - the rule's index columns must be unique per row.
+- **`CITATION_CFF_VALIDATION_ERROR`** - `CITATION.cff` must be valid YAML, a mapping,
+  and carry the required CFF keys (a conservative subset of the full CFF schema).
+- **NIfTI headers read by default** (from the previous round) so
+  `NIFTI_HEADER_UNREADABLE` and `AMBIGUOUS_AFFINE` fire without a flag.
+
+## False positives the matched-schema test caught (and fixed)
+
+1. **Atlas `*_description.json`** was reported as `SIDECAR_WITHOUT_DATAFILE` on the
+   `atlas-*` example datasets. These are atlas descriptors, not data sidecars, and
+   the reference does not flag them. Fixed by exempting `*_description.json`.
+2. **Headerless physio `.tsv.gz`** was reported as `TSV_COLUMN_MISSING` (the
+   eyetracking dataset). Physio and stim TSVs are headerless: their column names come
+   from the sidecar, not a header row. Fixed by skipping column checks on gzipped
+   TSVs. (The first report had mislabelled this as a schema-version difference; at a
+   matched schema it is a genuine bug, now fixed.)
+
+## Matched-schema results (reference forced to `-s v1.11.1`)
+
+| Dataset | declared BIDSVersion | bidsval err/warn | Deno err/warn | bidsval-only error codes |
+|---|---|---|---|---|
+| asl002 | 1.5.0 | 0/53 | 3/50 | - |
+| eeg_matchingpennies | 1.11.1 | 7/261 | 7/268 | - |
+| ds000246 | 1.8.0 | 0/64 | 1/61 | - |
+| ds003 | 1.0.0 | 39/992 | 78/991 | - |
+| ieeg_epilepsy | 1.7.0 | 11/107 | 13/107 | - |
+| micr_SEM | 1.7.0 | 0/24 | 0/23 | - |
+| fnirs_tapping | 1.8.0 | 5/115 | 5/160 | - |
+| qmri_mp2rage | 1.5.0 | 8/157 | 15/159 | - |
+| pet001 | 1.6.0 | 3/57 | 3/57 | SIDECAR_KEY_REQUIRED x1 |
+| motion_systemvalidation | (none) | 12/100 | 12/100 | - |
+| hcp_example_bids | 1.0.2 | 5/123 | 10/123 | - |
+| converted MRI | 1.11.1 | 8/127 | 13/121 | - |
+| converted EEG | 1.11.1 | 172/30 | 146/30 | - |
+| converted MEG | 1.11.1 | 211/22 | 167/22 | - |
+| converted PET | 1.11.1 | 4/24 | 5/24 | - |
+
+## Headline (matched schema, all 112 bids-examples + 4 converted datasets)
+
+**Zero false-positive errors.** The only bidsval-only error codes are the two
+already explained in the first report: PET `SIDECAR_KEY_REQUIRED` (bidsval is more
+schema-faithful) and the EEG/MEG `JSON_SCHEMA_VALIDATION_ERROR` per-file-vs-per-origin
+attribution. The atlas and physio differences are no longer present.
+
+## Still deferred
+
+`HED` (needs a HED validator), symlink checks (conflict with treating unfetched
+git-annex symlinks as present), derivatives recursion, the `coordsystems` /
+`atlas_description` aggregates, and the remaining tabular checks
+(`TSV_COLUMN_ORDER_INCORRECT`, `TSV_COLUMN_TYPE_REDEFINED`, `MULTIPLE_INHERITABLE_FILES`,
+`SIDECAR_FIELD_OVERRIDE`, `INVALID_GZIP`). `INVALID_GZIP` was tried and removed: the
+reference reports a corrupt `.nii.gz` as `NIFTI_HEADER_UNREADABLE`, not `INVALID_GZIP`,
+so a blanket gzip check produced a bidsval-only error.
+
+## Reproducing the matched-schema comparison
+
+```shell
+bids-validator-deno --format json -s v1.11.1 /path/to/dataset > deno.json
+bidsval validate /path/to/dataset --output-type json --show all > bidsval.json
+# diff the error (file, code) pairs
+```
