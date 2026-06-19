@@ -115,7 +115,7 @@ class ContextBuilder:
                 else None
             ),
             "associations": build_associations(
-                self.schema, self.tree, bids_file, short_entities, suffix, extension
+                self.schema, self.tree, bids_file, short_entities, suffix, extension, datatype
             ),
             "subject": {},
             "dataset": self._dataset,

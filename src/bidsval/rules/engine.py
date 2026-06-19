@@ -41,10 +41,10 @@ _EVALUATED_GROUPS = ("checks", "sidecars", "dataset_metadata", "tabular_data")
 # Context fields/aggregates not yet populated with real data. A rule that
 # depends on one of these cannot be determined, so it is skipped rather than
 # evaluated against empty data (which would otherwise produce false findings).
-# Most associations ARE built now; only the two aggregates (coordsystems,
-# atlas_description) and the microscopy/gzip headers remain. (nifti_header is not
-# listed: the schema's selectors gate header checks on `nifti_header != null`.)
-_UNPOPULATED_FIELDS = re.compile(r"\b(gzip|ome|tiff|coordsystems|atlas_description)\b")
+# coordsystems and atlas_description ARE now built (context/associations.py); only
+# the microscopy/gzip headers remain. (nifti_header is not listed: the schema's
+# selectors gate header checks on `nifti_header != null`.)
+_UNPOPULATED_FIELDS = re.compile(r"\b(gzip|ome|tiff)\b")
 
 _LEVEL_TO_SEVERITY = {
     "required": Severity.ERROR,

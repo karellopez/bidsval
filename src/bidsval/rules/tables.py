@@ -23,9 +23,8 @@ from typing import Any
 from bidsschematools.types.namespace import Namespace
 
 from ..issues import Fix, Issue, Severity
+from .column_types import check_value, compile_spec, is_trivial, value_signature
 from .guidance import column_guidance
-
-_NA = {"n/a", "", None}
 
 
 def eval_columns(
@@ -119,18 +118,81 @@ def eval_columns(
     issues += _pseudo_age(columns, location, path)
     issues += _index_unique(rule, object_columns, columns, location, path)
     issues += _initial_columns_order(rule, object_columns, columns, location, path)
-
-    # Numeric value types (safe coercion check only).
-    for name, (definition, _requirement) in defined.items():
-        if name not in columns:
-            continue
-        type_name = definition.get("type")
-        if type_name in ("number", "integer"):
-            issue = _check_numeric_column(name, columns[name], str(type_name), location, path)
-            if issue is not None:
-                issues.append(issue)
+    issues += _value_types(schema, defined, columns, context, location, path)
 
     return issues
+
+
+def _value_types(
+    schema: Namespace,
+    defined: Mapping[str, tuple[Mapping[str, Any], Any]],
+    columns: Mapping[str, list[Any]],
+    context: Mapping[str, Any],
+    location: str,
+    path: str,
+) -> list[Issue]:
+    """Check each schema-defined column's values against its (possibly sidecar-refined)
+    type signature, and flag an incompatible sidecar redefinition."""
+    formats = schema["objects"].get("formats", {})
+    sidecar = context.get("sidecar")
+    sidecar = sidecar if isinstance(sidecar, Mapping) else {}
+    issues: list[Issue] = []
+    for name, (column_object, _requirement) in defined.items():
+        if name not in columns:
+            continue
+        signature, redefine = value_signature(column_object, sidecar.get(name))
+        if redefine:
+            issues.append(
+                Issue(
+                    code="TSV_COLUMN_TYPE_REDEFINED",
+                    sub_code=name,
+                    severity=Severity.WARNING,
+                    location=location,
+                    message=f"the sidecar redefinition of column {name!r} is ignored: {redefine}",
+                    suggestion="A sidecar may only refine a schema column (same base type, a "
+                    "subset of any levels, within any bounds). Remove or correct the redefinition.",
+                    rule=path,
+                )
+            )
+        if is_trivial(signature):
+            continue
+        spec = compile_spec(signature, formats)
+        for index, value in enumerate(columns[name]):
+            text = str(value)
+            if name == "age" and text == "89+":
+                continue  # reported as TSV_PSEUDO_AGE_DEPRECATED instead
+            if not check_value(text, spec):
+                issues.append(
+                    Issue(
+                        code="TSV_VALUE_INCORRECT_TYPE",
+                        sub_code=name,
+                        severity=Severity.ERROR,
+                        location=location,
+                        line=index + 2,
+                        message=f"column {name!r}: value {value!r} is not valid for its type",
+                        suggestion=_value_suggestion(signature),
+                        rule=path,
+                    )
+                )
+                break  # one type error per column is enough to act on
+    return issues
+
+
+def _value_suggestion(signature: Any) -> str:
+    if signature.levels:
+        shown = ", ".join(signature.levels[:8])
+        more = ", ..." if len(signature.levels) > 8 else ""
+        return f"Use one of the allowed values ({shown}{more}), or 'n/a'."
+    bounds = []
+    if signature.minimum is not None:
+        bounds.append(f">= {signature.minimum}")
+    if signature.maximum is not None:
+        bounds.append(f"<= {signature.maximum}")
+    kind = signature.formats[0] if signature.formats else "the expected type"
+    text = f"Each value must be a valid {kind}"
+    if bounds:
+        text += " (" + " and ".join(bounds) + ")"
+    return text + ", or 'n/a'."
 
 
 def _index_unique(
@@ -208,27 +270,6 @@ def _initial_columns_order(
                 )
             )
     return issues
-
-
-def _check_numeric_column(
-    name: str, values: list[Any], type_name: str, location: str, path: str
-) -> Issue | None:
-    for index, value in enumerate(values):
-        if value in _NA:
-            continue
-        try:
-            float(value)
-        except (TypeError, ValueError):
-            return Issue(
-                code="TSV_VALUE_INCORRECT_TYPE",
-                sub_code=name,
-                severity=Severity.ERROR,
-                location=location,
-                line=index + 2,  # 1-based, plus the header row
-                message=f"column {name!r} expects {type_name} values, found {value!r}",
-                rule=path,
-            )
-    return None
 
 
 def _pseudo_age(columns: Mapping[str, Any], location: str, path: str) -> list[Issue]:

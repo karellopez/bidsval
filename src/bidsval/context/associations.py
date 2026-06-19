@@ -31,11 +31,11 @@ from .entities import parse_filename
 from .inheritance import _is_subset, merged_sidecar
 from .loaders import load_columns, load_json
 
-# Built here (the rule engine relies on these being populated). The aggregates
-# coordsystems / atlas_description are deliberately omitted.
+# Built here (the rule engine relies on these being populated).
 _BUILT = {
     "events", "bval", "bvec", "channels", "aslcontext", "m0scan",
     "magnitude", "magnitude1", "coordsystem", "electrodes", "physio",
+    "atlas_description", "coordsystems",
 }
 
 
@@ -46,6 +46,7 @@ def build_associations(
     source_entities: dict[str, str],
     source_suffix: str,
     source_extension: str,
+    source_datatype: str = "",
 ) -> dict[str, Any]:
     """Return the ``associations`` mapping for one data file."""
     if not source_suffix:
@@ -55,12 +56,20 @@ def build_associations(
         "suffix": source_suffix,
         "extension": source_extension,
         "entities": source_entities,
+        "datatype": source_datatype,
     }
     out: dict[str, Any] = {}
     for name, spec in specs.items():
         if name not in _BUILT:
             continue
         if not _spec_applies(spec.get("selectors", []), selector_context):
+            continue
+        if name == "coordsystems":
+            # An aggregate of all coordsystem files (one per space-), with the fields
+            # the EMG rules read; not a single target.
+            aggregate = _build_coordsystems(schema, tree, data_file, source_entities)
+            if aggregate is not None:
+                out[name] = aggregate
             continue
         target = spec.get("target", {})
         found = _find_target(
@@ -76,6 +85,42 @@ def build_associations(
             continue
         out[name] = _association_object(schema, tree, found)
     return out
+
+
+def _build_coordsystems(
+    schema: Namespace,
+    tree: FileTree,
+    data_file: BIDSFile,
+    source_entities: dict[str, str],
+) -> dict[str, Any] | None:
+    """Collect every applicable ``coordsystem`` JSON (one per ``space-``) and expose
+    ``paths`` / ``spaces`` / ``ParentCoordinateSystems`` (the EMG rules read these).
+
+    A coordsystem matches when its entities are a subset of the source's, except the
+    ``space`` entity may differ (the target allows it), mirroring the reference's
+    ``targetEntities=['space']`` walk.
+    """
+    found: list[tuple[BIDSFile, dict[str, str]]] = []
+    for dir_relpath in tree.ancestor_dirs(data_file.relpath):  # inherit up the tree
+        for candidate in tree.files_in(dir_relpath):
+            cand_entities, cand_suffix, cand_ext = parse_filename(schema, candidate.name)
+            if cand_suffix != "coordsystem" or cand_ext != ".json":
+                continue
+            if all(source_entities.get(k) == v or k == "space" for k, v in cand_entities.items()):
+                found.append((candidate, cand_entities))
+    if not found:
+        return None
+    parents: list[str] = []
+    for candidate, _entities in found:
+        data = load_json(candidate)
+        parent = data.get("ParentCoordinateSystem") if isinstance(data, dict) else None
+        if parent:
+            parents.append(parent)
+    return {
+        "paths": ["/" + candidate.relpath for candidate, _ in found],
+        "spaces": [ent["space"] for _f, ent in found if "space" in ent],
+        "ParentCoordinateSystems": parents,
+    }
 
 
 def _spec_applies(selectors: list[str], context: dict[str, Any]) -> bool:
