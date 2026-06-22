@@ -261,19 +261,33 @@ def sorted_(values: Any, method: str = "auto") -> Any:
     if not isinstance(values, list):
         return None  # null, or any non-list input, has nothing to sort
     if method == "numeric":
-        comparator = _numeric_comparator
-    elif method == "lexical":
-        comparator = _lexical_comparator
-    else:
-        comparator = _auto_comparator
+        return _numeric_sorted(values)
+    comparator = _lexical_comparator if method == "lexical" else _auto_comparator
     return sorted(values, key=cmp_to_key(comparator))
 
 
-def _numeric_comparator(a: Any, b: Any) -> int:
-    na, nb = to_number(a), to_number(b)
-    if math.isnan(na) or math.isnan(nb):
-        return 0  # leave non-numbers where they are (stable sort keeps order)
-    return (na > nb) - (na < nb)
+def _numeric_sorted(values: list[Any]) -> list[Any]:
+    """Sort the numeric entries of ``values`` while non-numbers hold their slots.
+
+    Non-numeric entries (for example the BIDS ``"n/a"``) keep their original
+    absolute position; the numeric entries are sorted (stably, by numeric value)
+    and placed back into the remaining slots in order. This matches the reference
+    behaviour for ``sorted(..., "numeric")``.
+
+    Why not a ``cmp_to_key`` comparator: a comparator that maps every ``NaN``
+    comparison to "equal" is not a valid total order (it claims ``n/a == 1`` and
+    ``n/a == 2`` yet ``1 < 2``), so the sort result depends on the interpreter's
+    list-sort merge policy. It happens to match the reference under CPython
+    3.10's policy but not under the 3.11+ powersort policy, which silently
+    changed the placement of ``n/a`` entries. This position-preserving
+    implementation is deterministic across every supported Python version.
+    """
+    positions = [i for i, value in enumerate(values) if not math.isnan(to_number(value))]
+    ordered = sorted((values[i] for i in positions), key=to_number)
+    result = list(values)
+    for position, value in zip(positions, ordered, strict=True):
+        result[position] = value
+    return result
 
 
 def _lexical_comparator(a: Any, b: Any) -> int:

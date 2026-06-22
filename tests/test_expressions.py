@@ -82,3 +82,26 @@ def test_unknown_function_raises_distinct_error() -> None:
     # evaluator must signal that distinctly so callers can skip rather than crash.
     with pytest.raises(UnknownFunction):
         evaluate_string("brandnewfunc(1, 2)", {})
+
+
+# --- numeric sort is deterministic across Python versions -----------------
+
+
+@pytest.mark.parametrize(
+    "values,expected",
+    [
+        (["n/a", "2", "1"], ["n/a", "1", "2"]),
+        (["1", "2", "n/a"], ["1", "2", "n/a"]),
+        (["3", "n/a", "1", "n/a", "2"], ["1", "n/a", "2", "n/a", "3"]),
+        (["1", "2", "5", "10"], ["1", "2", "5", "10"]),
+    ],
+)
+def test_numeric_sort_holds_non_numbers_in_place(
+    values: list[str], expected: list[str]
+) -> None:
+    # Non-numeric entries (n/a) keep their absolute position; the numbers sort
+    # into the remaining slots. Pinned explicitly so the version-dependent
+    # ``cmp_to_key`` result (which only matches the reference on CPython 3.10)
+    # cannot silently come back on 3.11+ (powersort).
+    expression = "sorted(" + json.dumps(values) + ', "numeric")'
+    assert evaluate_string(expression, {}) == expected
