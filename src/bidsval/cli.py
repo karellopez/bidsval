@@ -72,14 +72,14 @@ Examples:
   # skip NIfTI header reading (faster)
   bidsval validate /data/my_study --no-headers
 
-  # write machine-readable and HTML reports into a directory
-  bidsval validate /data/my_study --output-type json,html --out-dir ./reports
+  # write every format into a directory
+  bidsval validate /data/my_study --out-type all --out-dir ./reports
 
 Output:
-  One format prints to stdout (text by default). Selecting more than one format requires
-  --out-dir, which writes report.<ext> per format (report.txt, report.json,
-  report.sarif, report.html). In the text report each issue is one line:
-  SEVERITY CODE [field] file - message.
+  One format prints to stdout (text by default). 'all' (or any comma-separated set)
+  writes report.<ext> per format (report.txt, report.json, report.sarif, report.html)
+  into --out-dir, or the current directory if --out-dir is omitted. In the text report
+  each issue is one line: SEVERITY CODE [field] file - message.
 """
 
 _SCHEMA_DESCRIPTION = """\
@@ -261,26 +261,52 @@ def build_parser() -> argparse.ArgumentParser:
         help="also validate BIDS datasets under derivatives/ (each on its own).",
     )
     validate_cmd.add_argument(
+        "--out-type",
         "--output-type",
+        dest="output_type",
         default="text",
         metavar="TYPES",
-        help="comma-separated output formats: text, json, sarif, html, or 'all' "
-        "(default: text). Selecting more than one requires --out-dir.",
+        help="output format: text, json, sarif, html, or 'all' (default: text). A single "
+        "format prints to stdout unless --out-dir is given; 'all' (and any comma-separated "
+        "set) writes report.<ext> files into --out-dir, or the current directory if --out-dir "
+        "is omitted.",
     )
     validate_cmd.add_argument(
         "--out-dir",
         metavar="DIR",
-        help="write reports to this directory (created if needed), one report.<ext> per "
-        "--output-type. Required when more than one format is selected; a single format "
-        "prints to stdout.",
+        help="directory to write the report file(s) into, one report.<ext> per format "
+        "(created if needed). Without it, a single format prints to stdout and 'all' writes "
+        "into the current directory.",
     )
     validate_cmd.add_argument(
         "--show",
-        default="error,warning",
+        default="all",
         metavar="LEVELS",
-        help="severities to display: any of error, warning, ignore, or 'all' "
-        "(default: error,warning). Filters the output only; it does not change validity "
-        "or the exit code.",
+        help="severities to display: any of error, warning, ignore, or 'all' (default: all). "
+        "Filters the output only; it does not change validity or the exit code.",
+    )
+    validate_cmd.add_argument(
+        "--max-rows",
+        type=int,
+        default=1000,
+        metavar="N",
+        help="maximum number of TSV rows scanned per table for value checks (default: 1000).",
+    )
+    validate_cmd.add_argument(
+        "--filenames-only",
+        action="store_true",
+        help="report only file name and path findings (skip content findings in the output).",
+    )
+    validate_cmd.add_argument(
+        "--list-schemas",
+        action="store_true",
+        help="list the default and bundled schema versions, then exit.",
+    )
+    validate_cmd.add_argument(
+        "-v",
+        "--verbose",
+        action="store_true",
+        help="print the bidsval version before validating.",
     )
     validate_cmd.set_defaults(func=_run_validate)
 
@@ -326,7 +352,47 @@ def _run_eval(args: argparse.Namespace) -> int:
     return 0
 
 
+# Codes produced by the file name / path rules, for ``--filenames-only``.
+_FILENAME_CODES = frozenset(
+    {
+        "NOT_INCLUDED",
+        "FILENAME_MISMATCH",
+        "EXTENSION_MISMATCH",
+        "DATATYPE_MISMATCH",
+        "ENTITY_NOT_IN_RULE",
+        "MISSING_REQUIRED_ENTITY",
+        "INVALID_ENTITY_LABEL",
+        "ENTITY_WITH_NO_LABEL",
+        "ALL_FILENAME_RULES_HAVE_ISSUES",
+        "INVALID_LOCATION",
+    }
+)
+
+
+def _list_schemas() -> int:
+    """Print the default and bundled schema versions (the ``--list-schemas`` flag)."""
+    default = resolve(None)
+    print(f"default: BIDS {bids_version(default)} (schema {schema_version(default)})")
+    print(f"bundled: {', '.join(available_versions())}")
+    return 0
+
+
+def _keep_filename_findings(report: object) -> None:
+    """Drop every non-filename finding from ``report`` in place (``--filenames-only``)."""
+    report.dataset_issues.issues = [
+        i for i in report.dataset_issues.issues if i.code in _FILENAME_CODES
+    ]
+    for verdict in report.files:
+        verdict.issues = [i for i in verdict.issues if i.code in _FILENAME_CODES]
+        verdict.recompute_severity()
+    report.files = [v for v in report.files if v.issues]
+
+
 def _run_validate(args: argparse.Namespace) -> int:
+    if args.list_schemas:
+        return _list_schemas()
+    if args.verbose:
+        print(f"bidsval {__version__}", file=sys.stderr)
     subjects = None
     if args.subject:
         sub = args.subject if args.subject.startswith("sub-") else f"sub-{args.subject}"
@@ -336,6 +402,7 @@ def _run_validate(args: argparse.Namespace) -> int:
             args.dataset,
             schema=args.schema,
             read_headers=not args.no_headers,
+            max_rows=args.max_rows,
             subjects=subjects,
             recursive=args.recursive,
         )
@@ -355,18 +422,19 @@ def _run_validate(args: argparse.Namespace) -> int:
 
     # Findings are filtered for display only; validity always depends on errors.
     display = report.filtered(severities)
+    if args.filenames_only:
+        _keep_filename_findings(display)
 
-    if args.out_dir:
-        out_dir = Path(args.out_dir)
+    # A single format prints to stdout (composable). 'all' and any multi-format set
+    # write report.<ext> files: into --out-dir if given, otherwise the current
+    # directory, since several documents cannot stream to stdout.
+    if args.out_dir or len(types) > 1:
+        out_dir = Path(args.out_dir) if args.out_dir else Path.cwd()
         out_dir.mkdir(parents=True, exist_ok=True)
         for output_type in sorted(types):
             destination = out_dir / f"report.{EXTENSIONS[output_type]}"
             destination.write_text(RENDERERS[output_type](display), encoding="utf-8")
             print(f"wrote {destination}", file=sys.stderr)
-    elif len(types) > 1:
-        print("error: --out-dir is required when --output-type selects more than one format",
-              file=sys.stderr)
-        return 2
     else:
         print(RENDERERS[next(iter(types))](display))
 

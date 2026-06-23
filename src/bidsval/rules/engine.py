@@ -71,14 +71,20 @@ def apply_rules(schema: Namespace, context: Mapping[str, Any]) -> list[Issue]:
 
 
 def _validate_present_values(schema: Namespace, context: Mapping[str, Any]) -> list[Issue]:
-    """Validate the value of EVERY present sidecar/json field against its schema
-    metadata definition (not only fields a rule names). A field whose name maps to
-    several definitions is valid if it matches any of them, so context-specific
-    duplicate names never cause a false positive."""
-    is_json = context.get("extension") == ".json"
-    if is_json and not context.get("__json_ok__", True):
+    """Validate the value of EVERY present JSON field against its schema metadata
+    definition (not only fields a rule names). A field whose name maps to several
+    definitions is valid if it matches any of them, so context-specific duplicate
+    names never cause a false positive.
+
+    Values are validated only on the ``.json`` files that carry them, matching the
+    reference validator's attribution. A data file's merged-sidecar values live in
+    those same JSON files, so validating them again on the data file would
+    double-report (once on the .json, once on the .nii.gz)."""
+    if context.get("extension") != ".json":
+        return []
+    if not context.get("__json_ok__", True):
         return []  # the JSON itself is malformed; integrity reports that instead
-    data = context.get("json") if is_json else context.get("sidecar")
+    data = context.get("json")
     if not isinstance(data, Mapping):
         return []
     by_name = introspect.metadata_by_name(schema)
@@ -236,7 +242,6 @@ def _eval_fields(
         return
 
     metadata = schema["objects"].get("metadata", {})
-    is_derivative = _dataset_type(context) == "derivative"
 
     for field_key, requirement in rule["fields"].items():
         meta_def = metadata.get(field_key, {})
@@ -247,10 +252,9 @@ def _eval_fields(
         severity = _field_severity(requirement, context)
         if severity is Severity.IGNORE:
             continue
-        # In a derivative dataset, individual sidecar fields are optional unless
-        # the rule explicitly targets derivatives.
-        if is_derivative and not _targets_derivative(rule):
-            continue
+        # Required and recommended sidecar/dataset fields are reported on derivative
+        # datasets too: the reference validator applies these field rules regardless
+        # of DatasetType, so to stay aligned with it bidsval does not suppress them.
 
         issues.append(
             _missing_field_issue(
@@ -340,17 +344,3 @@ def validate_basename(schema: Namespace, context: Mapping[str, Any], name: str) 
 
 def _location(context: Mapping[str, Any]) -> str:
     return str(context.get("path", "")).lstrip("/")
-
-
-def _dataset_type(context: Mapping[str, Any]) -> str:
-    dataset = context.get("dataset") or {}
-    description = dataset.get("dataset_description") if isinstance(dataset, Mapping) else {}
-    if isinstance(description, Mapping):
-        return str(description.get("DatasetType", "raw"))
-    return "raw"
-
-
-def _targets_derivative(rule: Mapping[str, Any]) -> bool:
-    return any(
-        'DatasetType == "derivative"' in selector for selector in rule.get("selectors", [])
-    )

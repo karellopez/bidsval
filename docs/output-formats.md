@@ -1,11 +1,12 @@
 # Output formats and filtering
 
 Output type and output destination are independent. You choose the format(s)
-with `--output-type`, and where they go with `--out-dir` (or stdout).
+with `--out-type`, and where they go with `--out-dir` (or stdout).
 
-## `--output-type`
+## `--out-type`
 
-A comma-separated list of formats, or `all`:
+One format, a comma-separated list, or `all` (`--output-type` is an accepted
+alias):
 
 | Value | Format |
 |---|---|
@@ -17,28 +18,29 @@ A comma-separated list of formats, or `all`:
 
 ## Where output goes
 
-- Without `--out-dir`: the single selected type is printed to stdout
-  (`--output-type` must name exactly one type in this case).
-- With `--out-dir DIR`: each selected type is written to `DIR/report.<ext>`
-  (`report.txt`, `report.json`, `report.sarif`, `report.html`).
+- A single format with no `--out-dir`: printed to stdout, so it composes with
+  pipes and redirection.
+- `all` or several formats: each one is written to `report.<ext>` (`report.txt`,
+  `report.json`, `report.sarif`, `report.html`) inside `--out-dir`, or the current
+  directory if `--out-dir` is omitted (several documents cannot stream to stdout).
+  The path of each file written is printed to stderr.
 
 ```shell
-bidsval validate /data                                  # text to stdout
-bidsval validate /data --output-type json               # JSON to stdout
-bidsval validate /data --output-type sarif > out.sarif  # SARIF to a file via redirection
-bidsval validate /data --output-type html --out-dir reports/      # writes reports/report.html
-bidsval validate /data --output-type all  --out-dir reports/      # writes all four files
+bidsval validate /data                               # text to stdout
+bidsval validate /data --out-type json               # JSON to stdout
+bidsval validate /data --out-type sarif > out.sarif  # SARIF to a file via redirection
+bidsval validate /data --out-type all --out-dir reports/   # writes all four into reports/
+bidsval validate /data --out-type all                # writes all four into the current dir
 ```
 
 ## `--show` (which findings to display)
 
-Filter the displayed findings by severity (requirement level). Defaults to
-`error,warning`.
+Filter the displayed findings by severity (requirement level). Defaults to `all`.
 
 ```shell
 bidsval validate /data --show error              # show only errors
-bidsval validate /data --show error,warning      # default
-bidsval validate /data --show all                # include ignored/suppressed findings
+bidsval validate /data --show error,warning      # errors and warnings
+bidsval validate /data --show all                # everything (default)
 ```
 
 `--show` only changes what is displayed or written; it never changes the
@@ -53,5 +55,6 @@ errors, regardless of the filter.
 | `warning` | a RECOMMENDED practice is not met |
 | `ignore` | an explicitly silenced finding (kept for transparency) |
 
-Empty files are errors (the file exists but has no data), matching the reference
-validator.
+Empty files and unreadable NIfTI headers are errors (the file exists but has no
+usable data), matching the reference validator. An empty `.nii(.gz)` is reported
+as both `EMPTY_FILE` and `NIFTI_HEADER_UNREADABLE`, as the reference does.

@@ -64,26 +64,29 @@ From the command line:
 # Text summary to the terminal (exits non-zero on errors, so it drops into CI):
 bidsval validate /path/to/dataset
 
-# Validate one subject; also check NIfTI headers:
-bidsval validate /path/to/dataset --subject sub-01 --headers
+# Validate one subject (NIfTI headers are read by default):
+bidsval validate /path/to/dataset --subject sub-01
 
 # Pick the output type (independent of where it goes):
-bidsval validate /path/to/dataset --output-type json     # JSON to stdout
-bidsval validate /path/to/dataset --output-type sarif    # SARIF to stdout (CI / IDE code scanning)
+bidsval validate /path/to/dataset --out-type json     # JSON to stdout
+bidsval validate /path/to/dataset --out-type sarif    # SARIF to stdout (CI / IDE code scanning)
 
 # Write report files: --out-dir holds report.<ext> for each selected type:
-bidsval validate /path/to/dataset --output-type html --out-dir reports/   # reports/report.html
-bidsval validate /path/to/dataset --output-type all  --out-dir reports/   # report.txt/.json/.sarif/.html
+bidsval validate /path/to/dataset --out-type html --out-dir reports/   # reports/report.html
+bidsval validate /path/to/dataset --out-type all  --out-dir reports/   # report.txt/.json/.sarif/.html
+bidsval validate /path/to/dataset --out-type all                       # the same, into the current dir
 
 # Show only the severities you care about (does not change pass/fail):
-bidsval validate /path/to/dataset --show error           # errors only
+bidsval validate /path/to/dataset --show error           # errors only (default shows all)
 ```
 
-Flags: `--schema <version|url|path>`, `--subject sub-01`, `--headers`
-(also check NIfTI headers, needs nibabel), `--output-type text|json|sarif|html|all`
-(default `text`; one type prints to stdout, several need `--out-dir`),
-`--out-dir DIR` (write `report.<ext>` per type), `--show error,warning,ignore,all`
-(filter displayed findings; default `error,warning`).
+Flags: `--schema <version|url|path>`, `--subject sub-01`, `--no-headers`
+(skip NIfTI header reading; headers are on by default, needs nibabel),
+`--out-type text|json|sarif|html|all` (alias `--output-type`; default `text`; one
+type prints to stdout, while `all` and multi-format sets write `report.<ext>` into
+`--out-dir`, or the current directory if it is omitted), `--out-dir DIR`,
+`--show error,warning,ignore,all` (filter displayed findings; default `all`),
+`--max-rows N`, `--filenames-only`, `--list-schemas`, `-v`.
 
 ## Choose a schema version
 
@@ -182,7 +185,7 @@ The docs live in [`docs/`](https://github.com/karellopez/bidsval/tree/main/docs)
 - [usage](https://github.com/karellopez/bidsval/blob/main/docs/usage.md) - install, the CLI, the Python API.
 - [CLI reference](https://github.com/karellopez/bidsval/blob/main/docs/cli-reference.md) - every command and option, with examples and exit codes.
 - [schema selection](https://github.com/karellopez/bidsval/blob/main/docs/schema-selection.md) - the single `--schema` selector.
-- [output formats](https://github.com/karellopez/bidsval/blob/main/docs/output-formats.md) - `--output-type`, `--out-dir`, `--show`.
+- [output formats](https://github.com/karellopez/bidsval/blob/main/docs/output-formats.md) - `--out-type`, `--out-dir`, `--show`.
 - [how it works](https://github.com/karellopez/bidsval/blob/main/docs/internals.md) - the complete technical reference: design, dependencies, every layer, flowcharts, and a glossary.
 - [comparison vs the Deno reference validator](https://github.com/karellopez/bidsval/blob/main/docs/comparison-vs-deno.md) - coverage, results, and the no-false-positives evidence.
 

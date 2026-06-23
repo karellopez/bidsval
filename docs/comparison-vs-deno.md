@@ -6,6 +6,16 @@ implementation): which findings each produces, the evidence behind bidsval's
 **no-false-positives** guarantee, and proof that bidsval is genuinely schema-driven
 (different schema versions give different results).
 
+> Note (bidsval 0.0.4): three behaviours were aligned more closely with the
+> reference. `NIFTI_HEADER_UNREADABLE` is now an error, and an empty `.nii(.gz)` is
+> reported as both `EMPTY_FILE` and `NIFTI_HEADER_UNREADABLE` (as the reference does).
+> Recommended and required sidecar fields are now reported on derivative datasets too.
+> And a JSON value finding is attributed only to the `.json` file that carries it, not
+> also to the data file. The per-dataset counts in the table below were measured on
+> the 0.0.1 baseline and predate these changes, so 0.0.4 matches the reference even
+> more closely than the table shows. The no-false-positives guarantee is unchanged:
+> every error bidsval reports is one the reference also reports.
+
 ## Method
 
 - **Tools**: `bids-validator-deno` 2.4.1 and bidsval 0.0.1, run over the same dataset
@@ -24,8 +34,8 @@ implementation): which findings each produces, the evidence behind bidsval's
 ## Headline
 
 Across all 116 datasets, bidsval produces **zero false-positive errors**. Every error
-bidsval reports is one the reference also reports, except two explained cases (below),
-neither of which is spurious.
+bidsval reports is one the reference also reports, except the one explained case
+(below), which is not spurious.
 
 ## bidsval is schema-driven: different schema versions, different results
 
@@ -70,15 +80,16 @@ emits that the reference does not emit anywhere in that dataset.
 bidsval reports the same or fewer errors than the reference everywhere except the two
 cases below, both correct.
 
-## The two bidsval-only signals (not false positives)
+## The bidsval-only signal (not a false positive)
 
 1. **PET `SIDECAR_KEY_REQUIRED` (pet001).** bidsval fills in which modalities are
    present; the reference leaves that context empty, so bidsval enforces a
    PET-conditional required field the reference drops. bidsval is more schema-faithful.
-2. **`JSON_SCHEMA_VALIDATION_ERROR` counts on the converted EEG/MEG datasets.** The
-   set of fields flagged is identical to the reference; bidsval counts a bad value
-   once per file that has it, while the reference counts once per origin sidecar. Same
-   findings, different attribution.
+
+(The earlier `JSON_SCHEMA_VALIDATION_ERROR` attribution difference on the converted
+EEG/MEG datasets is gone as of 0.0.4: bidsval now attributes a bad value only to the
+`.json` file that carries it, matching the reference, instead of also flagging it on
+the data file.)
 
 ## Coverage of the reference's hardcoded checks
 
@@ -145,6 +156,6 @@ bidsval is a pure-Python in-process library returning typed results, with a sing
 
 ```shell
 bids-validator-deno --format json -s v1.11.1 /path/to/dataset > deno.json
-bidsval validate /path/to/dataset --output-type json --show all > bidsval.json
+bidsval validate /path/to/dataset --out-type json --show all > bidsval.json
 # diff the error (file, code) pairs; force the same schema on both for a fair test
 ```

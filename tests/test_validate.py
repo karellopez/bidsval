@@ -17,6 +17,14 @@ from bidsval.files import FileTree
 from bidsval.schema import DEFAULT_VERSION, resolve
 
 
+def _write_nifti(path) -> None:
+    """Write a small, readable NIfTI so it is not flagged NIFTI_HEADER_UNREADABLE."""
+    import nibabel as nib
+    import numpy as np
+
+    nib.save(nib.Nifti1Image(np.zeros((2, 2, 2), dtype=np.int16), np.eye(4)), str(path))
+
+
 def _minimal_dataset(root, *, with_description=True) -> None:
     if with_description:
         (root / "dataset_description.json").write_text(
@@ -24,7 +32,7 @@ def _minimal_dataset(root, *, with_description=True) -> None:
         )
     anat = root / "sub-01" / "anat"
     anat.mkdir(parents=True)
-    (anat / "sub-01_T1w.nii.gz").write_text("not a real nifti")
+    _write_nifti(anat / "sub-01_T1w.nii.gz")
     (anat / "sub-01_T1w.json").write_text(json.dumps({"InstitutionName": "Somewhere"}))
 
 
@@ -85,7 +93,7 @@ def test_validate_file_not_found(tmp_path) -> None:
 def test_validate_subject_filters(tmp_path) -> None:
     _minimal_dataset(tmp_path)
     (tmp_path / "sub-02" / "anat").mkdir(parents=True)
-    (tmp_path / "sub-02" / "anat" / "sub-02_T1w.nii.gz").write_text("x")
+    _write_nifti(tmp_path / "sub-02" / "anat" / "sub-02_T1w.nii.gz")
     report = validate_subject(tmp_path, "01")
     subjects_seen = {str(f.path).split("/", 1)[0] for f in report.files if "/" in str(f.path)}
     assert subjects_seen == {"sub-01"}
@@ -105,7 +113,7 @@ def test_inheritance_merges_sidecars_most_specific_wins(tmp_path) -> None:
     func = root / "sub-01" / "func"
     func.mkdir(parents=True)
     data = func / "sub-01_task-rest_bold.nii.gz"
-    data.write_text("x")
+    _write_nifti(data)
     # Top-level applies to all rest-bold; subject-level overrides one field.
     (root / "task-rest_bold.json").write_text(json.dumps({"RepetitionTime": 2.0, "EchoTime": 0.03}))
     (func / "sub-01_task-rest_bold.json").write_text(json.dumps({"EchoTime": 0.05}))
@@ -125,7 +133,7 @@ def test_inheritance_picks_one_sidecar_per_directory(tmp_path) -> None:
     )
     func = root / "sub-01" / "func"
     func.mkdir(parents=True)
-    (func / "sub-01_task-rest_bold.nii.gz").write_text("x")
+    _write_nifti(func / "sub-01_task-rest_bold.nii.gz")
     # Two same-directory candidates both subset-match the data file.
     (func / "sub-01_bold.json").write_text(json.dumps({"EchoTime": 0.03}))
     (func / "sub-01_task-rest_bold.json").write_text(json.dumps({"RepetitionTime": 2.0}))

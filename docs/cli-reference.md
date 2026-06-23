@@ -39,7 +39,8 @@ Validate a BIDS dataset against the schema and report errors and warnings.
 
 ```
 bidsval validate PATH [--schema SELECTOR] [--subject SUB] [--no-headers] [--recursive]
-                      [--output-type TYPES] [--out-dir DIR] [--show LEVELS]
+                      [--out-type TYPES] [--out-dir DIR] [--show LEVELS] [--max-rows N]
+                      [--filenames-only] [--list-schemas] [-v]
 ```
 
 A dataset is valid when it has no errors. Errors are rule violations (a misplaced
@@ -60,22 +61,25 @@ Warnings flag recommended-but-missing metadata and do not affect validity.
 | `--subject SUB` | all subjects | validate only this subject. Accepts `sub-01` or just `01` (the `sub-` prefix is added if missing). Files outside that subject are skipped. |
 | `--no-headers` | (headers on) | skip NIfTI header checks. Headers are read by default (needs `nibabel`; skipped automatically if it is not installed). Pass this to validate faster on large datasets. |
 | `--recursive` | off | also validate every BIDS dataset under `derivatives/` (each on its own); results are attached to the report's `derivatives`. |
-| `--output-type TYPES` | `text` | comma-separated output formats: `text`, `json`, `sarif`, `html`, or `all`. Selecting more than one requires `--out-dir`. See [output formats](output-formats.md). |
-| `--out-dir DIR` | (stdout) | write reports into this directory (created if needed), one `report.<ext>` per format. Required when more than one format is selected; a single format prints to stdout. |
-| `--show LEVELS` | `error,warning` | severities to display: any of `error`, `warning`, `ignore`, or `all` (comma-separated). Filters the output only; it does not change validity or the exit code. |
+| `--out-type TYPES` | `text` | output format: `text`, `json`, `sarif`, `html`, or `all` (also accepts a comma-separated set). A single format prints to stdout unless `--out-dir` is given; `all` and any multi-format set write `report.<ext>` files into `--out-dir`, or the current directory if it is omitted. `--output-type` is an accepted alias. See [output formats](output-formats.md). |
+| `--out-dir DIR` | | directory to write the report file(s) into (created if needed), one `report.<ext>` per format. Without it, a single format prints to stdout and `all` writes into the current directory. |
+| `--show LEVELS` | `all` | severities to display: any of `error`, `warning`, `ignore`, or `all` (comma-separated). Filters the output only; it does not change validity or the exit code. |
+| `--max-rows N` | `1000` | maximum number of TSV rows scanned per table for value checks. |
+| `--filenames-only` | off | report only file name and path findings (skip content findings in the output). |
+| `--list-schemas` | | list the default and bundled schema versions, then exit. |
+| `-v`, `--verbose` | off | print the bidsval version before validating. |
 
 ### Output behaviour
 
-`--output-type` chooses the format(s); `--out-dir` chooses where they go. They are
-independent:
+`--out-type` chooses the format(s); `--out-dir` chooses where they go:
 
 - **One format, no `--out-dir`**: the report prints to stdout (the default is the
-  `text` summary). You can redirect it: `bidsval validate /data --output-type sarif > out.sarif`.
-- **More than one format**: `--out-dir` is required. Each selected format is written
-  to `DIR/report.<ext>` (`report.txt`, `report.json`, `report.sarif`, `report.html`),
-  and the path of each file written is printed to stderr.
-- `--output-type all` is shorthand for `text,json,sarif,html` and therefore also
-  needs `--out-dir`.
+  `text` summary). You can redirect it: `bidsval validate /data --out-type sarif > out.sarif`.
+- **`all` or several formats**: each selected format is written to `DIR/report.<ext>`
+  (`report.txt`, `report.json`, `report.sarif`, `report.html`) and the path of each
+  file written is printed to stderr. Files go into `--out-dir` if given, otherwise the
+  current directory (several documents cannot stream to stdout).
+- `--out-type all` is shorthand for `text,json,sarif,html`.
 
 In the **text** report, the run header is one line (`bidsval <version>  schema
 <X>  BIDS <Y>`), then the dataset path, then one line per finding:
@@ -94,10 +98,7 @@ applicable. The report ends with a count line (`N error(s), M warning(s)`) and a
 # quick check (text summary; exits non-zero on errors, so it fits CI)
 bidsval validate /data/my_study
 
-# show everything, including warnings and suppressed notes
-bidsval validate /data/my_study --show all
-
-# show only errors
+# show only errors (default shows everything)
 bidsval validate /data/my_study --show error
 
 # check a single subject (the sub- prefix is optional)
@@ -106,23 +107,29 @@ bidsval validate /data/my_study --subject 01
 # pin a schema version for reproducible results
 bidsval validate /data/my_study --schema 1.10.0
 
+# list the default and bundled schema versions
+bidsval validate /data/my_study --list-schemas
+
 # validate against the development tip of the schema (fetched and cached)
 bidsval validate /data/my_study --schema latest
 
 # skip NIfTI header reading (faster on large datasets)
 bidsval validate /data/my_study --no-headers
 
+# report only file name and path findings
+bidsval validate /data/my_study --filenames-only
+
 # machine-readable JSON to stdout (for scripting)
-bidsval validate /data/my_study --output-type json
+bidsval validate /data/my_study --out-type json
 
 # SARIF to a file by redirection (for code scanning)
-bidsval validate /data/my_study --output-type sarif > my_study.sarif
-
-# write JSON and HTML reports into ./reports/
-bidsval validate /data/my_study --output-type json,html --out-dir ./reports
+bidsval validate /data/my_study --out-type sarif > my_study.sarif
 
 # write every format into ./reports/
-bidsval validate /data/my_study --output-type all --out-dir ./reports
+bidsval validate /data/my_study --out-type all --out-dir ./reports
+
+# write every format into the current directory (no --out-dir)
+bidsval validate /data/my_study --out-type all
 ```
 
 ---

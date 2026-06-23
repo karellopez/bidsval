@@ -743,12 +743,15 @@ datatype and suffix. For each field the engine resolves a **severity**:
 | `optional` | ignore | not reported |
 | `prohibited` | ignore | not reported here |
 
-Two refinements keep this correct:
+One refinement keeps this correct:
 
 - **Conditional levels.** A note like "required if `X` is `Y`" is honoured: the
   level is raised only when the sidecar actually has `X` equal to `Y`.
-- **Derivative exemption.** In a derivative dataset, individual sidecar fields are
-  optional unless the rule explicitly targets derivatives, matching the standard.
+
+These field rules are applied on derivative datasets too: the reference validator
+reports the same required and recommended fields regardless of `DatasetType`, so
+bidsval does not exempt derivatives (it used to, which under-reported recommended
+fields on atlas and other derivative datasets).
 
 Field rules check **presence only**. The *value* of every present field is checked
 separately in one pass (below), so the set of fields bidsval reports matches the
@@ -780,13 +783,16 @@ are skipped.
 ### Field-value validation: `rules/values.py`
 
 After the rule walk, `_validate_present_values` checks the value of **every** present
-sidecar/JSON field (not only fields a rule names) against its definition in the
-schema. A field name can have several definitions for different contexts; the value
-is valid if it matches **any** of them, so a name used in two places never causes a
-false alarm. The check implements the part of the schema's type system the BIDS
-fields actually use: type, allowed-value list, "any of these", item type, and
-numeric or length bounds. A failure becomes a `JSON_SCHEMA_VALIDATION_ERROR` (error),
-such as `Authors must be array`.
+field on each `.json` file (not only fields a rule names) against its definition in
+the schema. It runs on the `.json` files only, not on a data file's merged sidecar:
+that matches the reference validator's attribution and avoids reporting the same bad
+value twice (once on the `.json`, once on the `.nii.gz`). A field name can have
+several definitions for different contexts; the value is valid if it matches **any**
+of them, so a name used in two places never causes a false alarm. The check
+implements the part of the schema's type system the BIDS fields actually use: type,
+allowed-value list, "any of these", item type, and numeric or length bounds. A
+failure becomes a `JSON_SCHEMA_VALIDATION_ERROR` (error), such as
+`Authors must be array`.
 
 ### Filename checks: `validate_basename`
 
@@ -802,9 +808,10 @@ reported more helpfully (with an explanation and a machine-actionable repair hin
 
 - **`EMPTY_FILE`** (error): a 0-byte file exists but holds no data. Skipped on a
   symlink (an unfetched placeholder has no local content to judge).
-- **`NIFTI_HEADER_UNREADABLE`** (warning): when headers are read (the default), if the NIfTI
-  header could not be read. Framed as a readability issue, not necessarily a BIDS
-  violation.
+- **`NIFTI_HEADER_UNREADABLE`** (error): when headers are read (the default), if the
+  NIfTI header could not be read. The two checks do not gate each other, so an empty
+  `.nii(.gz)` is reported as both `EMPTY_FILE` and `NIFTI_HEADER_UNREADABLE`, matching
+  the reference validator.
 
 ---
 
@@ -1005,7 +1012,7 @@ Every code bidsval can report, where it comes from, and its severity.
 | `FILE_NOT_FOUND` | error | `validate.py` | a file passed to `validate_file` is not under the root |
 | `bidsval.internal_error` | warning | `validate.py` | an unexpected error while validating one file (the run continues) |
 | `EMPTY_FILE` | error | `rules/bespoke.py` | a 0-byte file |
-| `NIFTI_HEADER_UNREADABLE` | warning | `rules/bespoke.py` | the NIfTI header could not be read (headers are read by default; `--no-headers` to skip) |
+| `NIFTI_HEADER_UNREADABLE` | error | `rules/bespoke.py` | the NIfTI header could not be read (headers are read by default; `--no-headers` to skip) |
 | `CASE_COLLISION` | error | `rules/dataset_checks.py` | two files differ only by letter case |
 | `SIDECAR_WITHOUT_DATAFILE` | error | `rules/dataset_checks.py` | a JSON sidecar applies to no data file |
 | `MULTIPLE_INHERITABLE_FILES` | error | `context/inheritance.py` | a directory has more than one applicable sidecar, none exact |

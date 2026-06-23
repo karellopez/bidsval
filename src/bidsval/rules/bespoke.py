@@ -42,20 +42,22 @@ def bespoke_checks(
                 fix=Fix(action="replace_empty_file", label="Provide real data for this file"),
             )
         )
-        return issues  # nothing else to check on an empty file
+        # The empty-file check does not short-circuit: the reference validator also
+        # reports NIFTI_HEADER_UNREADABLE on an empty/truncated NIfTI, so an empty
+        # .nii(.gz) yields both EMPTY_FILE and NIFTI_HEADER_UNREADABLE below.
 
     extension = str(context.get("extension", ""))
     if read_headers and extension.startswith(".nii") and context.get("nifti_header") is None:
         issues.append(
             Issue(
                 code="NIFTI_HEADER_UNREADABLE",
-                severity=Severity.WARNING,
+                severity=Severity.ERROR,
                 location=location,
                 message="the NIfTI header could not be read",
                 suggestion=(
-                    "This is a file-readability issue, not necessarily a BIDS structure violation: "
-                    "the file may be truncated, compressed oddly, or not a valid NIfTI. Verify it "
-                    "opens in a NIfTI reader."
+                    "The NIfTI header could not be read: the file may be empty, truncated, "
+                    "compressed oddly, or not a valid NIfTI. Replace it with a valid NIfTI or "
+                    "verify it opens in a NIfTI reader."
                 ),
                 fix=Fix(action="inspect_file", label="Check that the file is a valid NIfTI"),
             )
