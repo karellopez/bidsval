@@ -24,8 +24,15 @@ for field in schema.sidecar_fields("pet", "pet"):
 ## `sidecar_fields(datatype, suffix, ...)`
 
 Returns the sidecar fields the schema declares for a file, ordered required,
-recommended, optional, prohibited, then alphabetically inside each group. That is
-the order a form wants to render.
+recommended, optional, deprecated, prohibited, then alphabetically inside each
+group. That is the order a form wants to render: the live levels first and the
+two dead ones at the bottom.
+
+Where several rules declare the same field at different levels, the stronger
+statement wins, and `deprecated` counts as stronger than `optional`. Both permit
+the field, but only one of them warns you off it: `AcquisitionDuration` is
+optional for MRI at large and deprecated for `func/bold` in particular, and a
+form is more use if it says deprecated.
 
 ```python
 schema.sidecar_fields(
@@ -68,7 +75,7 @@ labelling an EEG recording `.nii.gz` makes every NIfTI-only rule apply to it.
 | Attribute | What it is |
 |---|---|
 | `name` | The sidecar key, e.g. `RepetitionTime`. |
-| `level` | `required`, `recommended`, `optional` or `prohibited`. |
+| `level` | `required`, `recommended`, `optional`, `deprecated` or `prohibited`. Nothing is reported for the last two, but a form should still say which one it is. |
 | `type` | The JSON type the schema declares: `number`, `string`, `array`, `object`, `boolean`, `integer`. Drives the widget, and the validator will check it. |
 | `description` | The standard's own prose. Ready to use as a tooltip. |
 | `display_name` | The human-readable name, e.g. `Repetition Time`. |

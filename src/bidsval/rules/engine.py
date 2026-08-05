@@ -51,6 +51,12 @@ _LEVEL_TO_SEVERITY = {
     "recommended": Severity.WARNING,
     "optional": Severity.IGNORE,
     "prohibited": Severity.IGNORE,
+    # The schema marks a handful of fields deprecated (RawSources,
+    # AcquisitionDuration, ScanDate, ...). Nothing is reported for them, exactly
+    # as before this entry existed, but the LEVEL now survives: an editor should
+    # be able to say "deprecated" rather than "optional", which is what an
+    # unrecognised level used to collapse to.
+    "deprecated": Severity.IGNORE,
 }
 
 # Files that cannot themselves carry a sidecar, so sidecar rules do not apply.

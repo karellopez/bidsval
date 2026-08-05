@@ -576,7 +576,29 @@ def _fields_of(
         )
 
 
-_LEVEL_RANK = {"required": 3, "recommended": 2, "optional": 1, "prohibited": 0}
+# How strong a statement each level is, used when several rules declare the same
+# field and one of them has to win. Deprecated outranks optional deliberately:
+# both permit the field, but only one of them warns you off it, and that is the
+# more informative thing to tell a curator. `AcquisitionDuration` is optional for
+# MRI at large and deprecated for func/bold specifically; the form should say
+# deprecated.
+_LEVEL_RANK = {
+    "required": 4,
+    "recommended": 3,
+    "deprecated": 2,
+    "optional": 1,
+    "prohibited": 0,
+}
+
+# Where each level belongs in a form, which is a different question: deprecated
+# and prohibited sink to the bottom however strong a statement they are.
+_ORDER_RANK = {
+    "required": 0,
+    "recommended": 1,
+    "optional": 2,
+    "deprecated": 3,
+    "prohibited": 4,
+}
 
 # Rule-certainty of the spec currently kept per field name, for the duration of
 # one query. Not part of FieldSpec because it is a merge detail, not something
@@ -628,7 +650,7 @@ def _merge(out: dict[str, FieldSpec], spec: FieldSpec, applicability: str) -> No
 
 
 def _ordered(specs: Any) -> list[FieldSpec]:
-    return sorted(specs, key=lambda s: (-_LEVEL_RANK.get(s.level, 0), s.name))
+    return sorted(specs, key=lambda s: (_ORDER_RANK.get(s.level, len(_ORDER_RANK)), s.name))
 
 
 # -- Namespace / Mapping access -----------------------------------------

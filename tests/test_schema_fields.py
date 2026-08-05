@@ -107,10 +107,31 @@ def test_every_datatype_reports_fields(datatype, suffix, floor) -> None:
 
 
 def test_results_are_ordered_required_first() -> None:
-    """The order a form wants: required, recommended, optional."""
-    levels = [f.level for f in S.sidecar_fields("pet", "pet")]
-    rank = {"required": 0, "recommended": 1, "optional": 2, "prohibited": 3}
-    assert levels == sorted(levels, key=lambda x: rank[x])
+    """The order a form wants: required first, the two dead levels last."""
+    rank = {"required": 0, "recommended": 1, "optional": 2, "deprecated": 3, "prohibited": 4}
+    for datatype, suffix in (("pet", "pet"), ("func", "bold"), ("anat", "T1w")):
+        levels = [f.level for f in S.sidecar_fields(datatype, suffix)]
+        assert levels == sorted(levels, key=lambda x: rank[x]), f"{datatype}/{suffix}"
+
+
+def test_a_deprecated_field_says_so() -> None:
+    """REGRESSION 9: the schema marks a few fields deprecated, but that level
+    was not in the severity map, so it collapsed to `optional` and an editor
+    could not tell a curator to stop using the field. Nothing is REPORTED for
+    them either way, so the validator is unaffected."""
+    spec = {f.name: f.level for f in S.sidecar_fields("pet", "pet")}
+    assert spec["ScanDate"] == "deprecated"
+    assert {f.name: f.level for f in S.sidecar_fields("ieeg", "ieeg")}[
+        "DCOffsetCorrection"
+    ] == "deprecated"
+
+
+def test_deprecation_beats_a_more_permissive_general_rule() -> None:
+    """`AcquisitionDuration` is optional for MRI at large and deprecated for
+    func/bold in particular. Both rules apply; the form should say deprecated,
+    because that is the one that tells the curator something."""
+    spec = {f.name: f.level for f in S.sidecar_fields("func", "bold")}
+    assert spec["AcquisitionDuration"] == "deprecated"
 
 
 def test_fields_carry_their_type_and_description() -> None:
