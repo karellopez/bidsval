@@ -75,20 +75,35 @@ class FieldSpec:
     """One metadata field the standard declares for a given kind of file.
 
     ``level`` is the BIDS requirement level (``required`` / ``recommended`` /
-    ``optional`` / ``prohibited``). ``conditional`` is True when the field's
-    applicability or its level depends on something only a concrete file can
-    settle, in which case ``level`` is the unconditional level and the caller
-    should present the field as possible rather than certain.
+    ``optional`` / ``deprecated`` / ``prohibited``).
+
+    Two flags say how firm that level is, and they are not the same question.
+    ``conditional`` is the broad one: True when either the level or the rule's
+    applicability depends on something only a concrete file can settle, so the
+    caller should present the field as possible rather than certain.
+    ``speculative`` is the sharp one: True when the RULE ITSELF may not describe
+    this file at all.
+
+    The difference decides whether a field may be DEMANDED. ``RepetitionTime``
+    on a ``func/bold`` run is conditional but not speculative: its rule
+    certainly applies and the condition is about an alternative field
+    (``VolumeTiming``), so a missing value is a real violation.
+    ``SkullStripped`` is both: it is required of derivatives, and nothing about
+    a datatype and suffix says whether this dataset is one, so demanding it of
+    an ordinary raw scan reports a violation that is not one. Show both; demand
+    only the non-speculative.
     """
 
     name: str
     level: str
     type: str = ""
+    item_type: str = ""
     description: str = ""
     display_name: str = ""
     enum: tuple[Any, ...] = ()
     unit: str = ""
     conditional: bool = False
+    speculative: bool = False
     rule: str = ""
 
     @property
@@ -506,6 +521,20 @@ def _rule_applies(
     return state
 
 
+def _item_type(meta: Mapping[str, Any]) -> str:
+    """The JSON type of an array field's ELEMENTS, empty when not an array.
+
+    Needed because "array" alone does not say what may go in it, and the schema
+    is specific: ``Authors`` holds strings, ``FrameDuration`` numbers,
+    ``SourceDatasets`` objects. A consumer building a widget, or writing a
+    placeholder, gets it wrong without this.
+    """
+    items = meta.get("items")
+    if items is None:
+        return ""
+    return str(_as_mapping(items).get("type", "") or "")
+
+
 def _entity_test_is_possible(text: str, allowed: set[str] | None) -> bool:
     """False when a selector tests for an entity this file may not carry.
 
@@ -562,6 +591,7 @@ def _fields_of(
                 name=str(meta.get("name", key)),
                 level=level,
                 type=str(meta.get("type", "") or ""),
+                item_type=_item_type(meta),
                 description=str(meta.get("description", "") or "").strip(),
                 display_name=str(meta.get("display_name", "") or ""),
                 enum=tuple(meta.get("enum", ()) or ()),
@@ -570,6 +600,11 @@ def _fields_of(
                 # here, whichever of the two it is.
                 conditional=applicability != "certain"
                 or (has_addendum and not context.get("sidecar")),
+                # The narrower flag: this rule may not describe this file at
+                # all, so its level must not be enforced. "default" does
+                # describe the file as the caller described it, and only
+                # "possible" means the rule failed against invented context.
+                speculative=applicability == "possible",
                 rule=rule_path,
             ),
             applicability,

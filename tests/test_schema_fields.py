@@ -202,6 +202,45 @@ def test_a_plain_bold_run_is_not_told_flip_angle_is_required() -> None:
     assert spec["FlipAngle"].conditional, "the caller should know it can change"
 
 
+def test_conditional_and_speculative_are_different_questions() -> None:
+    """REGRESSION 10: one flag conflated "the level might change" with "this
+    rule might not describe this file", and a consumer cannot enforce anything
+    without telling those apart.
+
+    RepetitionTime on a bold run is conditional (the schema excuses it when
+    VolumeTiming is present) but its rule certainly applies, so a missing value
+    is a real violation. SkullStripped is required of DERIVATIVES, and nothing
+    in a datatype and suffix says whether this dataset is one, so demanding it
+    of a raw scan invents a violation. BIDS Manager reported exactly that on
+    every raw dwi until this split existed.
+    """
+    spec = {f.name: f for f in S.sidecar_fields("func", "bold")}
+    assert spec["RepetitionTime"].level == "required"
+    assert spec["RepetitionTime"].conditional
+    assert not spec["RepetitionTime"].speculative
+
+    assert spec["SkullStripped"].level == "required"
+    assert spec["SkullStripped"].speculative
+
+
+def test_raw_scans_have_no_speculative_hard_requirements() -> None:
+    """What a raw dataset may actually be held to. dwi and anat genuinely
+    declare no required sidecar field; if either ever reports one, a
+    derivative-only rule has leaked back in."""
+    for datatype, suffix in (("dwi", "dwi"), ("anat", "T1w")):
+        hard = [
+            f.name
+            for f in S.sidecar_fields(datatype, suffix)
+            if f.level == "required" and not f.speculative
+        ]
+        assert hard == [], f"{datatype}/{suffix}: {hard}"
+    pet = [
+        f.name for f in S.sidecar_fields("pet", "pet")
+        if f.level == "required" and not f.speculative
+    ]
+    assert "TracerName" in pet and len(pet) > 20
+
+
 def test_a_supplied_sidecar_resolves_the_conditional() -> None:
     spec = {f.name: f.level for f in S.sidecar_fields(
         "func", "bold", sidecar={"LookLocker": True})}

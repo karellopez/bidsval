@@ -82,9 +82,37 @@ labelling an EEG recording `.nii.gz` makes every NIfTI-only rule apply to it.
 | `enum` | The controlled vocabulary as a tuple, empty when the field is free. A non-empty `enum` means the value belongs in a dropdown, not a text box. |
 | `unit` | The unit the schema declares, empty when it declares none: `FrameDuration` is in `s`. |
 | `conditional` | True when the level or the applicability depends on something not supplied. Render it as "recommended, may become required", not as a hard rule. |
+| `speculative` | True when the RULE may not describe this file at all. The flag that decides whether a field may be DEMANDED: see below. |
 | `rule` | The schema rule the field came from, e.g. `rules.sidecars.mri.MRIHardware`. Useful in a "why am I being asked this?" affordance. |
 
 `is_required` and `is_recommended` are convenience properties.
+
+### Showing a field is not the same as demanding it
+
+`conditional` and `speculative` answer two different questions, and a consumer
+that enforces anything needs both.
+
+```python
+spec = {f.name: f for f in schema.sidecar_fields("func", "bold")}
+
+spec["RepetitionTime"]   # required, conditional=True,  speculative=False
+spec["SkullStripped"]    # required, conditional=True,  speculative=True
+```
+
+`RepetitionTime` is conditional because the schema excuses it when
+`VolumeTiming` is present, but its rule certainly applies to a BOLD run, so a
+missing value is a real violation. `SkullStripped` is required of *derivatives*,
+and nothing in a datatype and suffix says whether this dataset is one, so
+demanding it of an ordinary raw scan invents a violation.
+
+The rule of thumb: show every field, demand only the ones that are not
+speculative.
+
+```python
+# What this kind of file can actually be held to.
+[f.name for f in schema.sidecar_fields("dwi", "dwi")
+ if f.level == "required" and not f.speculative]        # [] - dwi requires none
+```
 
 ## `dataset_description_fields(...)`
 
