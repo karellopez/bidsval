@@ -446,6 +446,36 @@ remembered, so repeated calls during a run are free):
 This is the entire reason bidsval is version-independent: every BIDS term it knows
 comes from here, never from fixed text in the code.
 
+### Asking the schema about a file that does not exist: `fields.py`
+
+The rest of this document describes the validator: a pipeline that starts from
+files on disk. [`schema/fields.py`](../src/bidsval/schema/fields.py) is the one
+part of the library that runs without any. It answers what BIDS declares for a
+*kind* of file, which is what a metadata form or a conversion template needs
+before it writes anything: `sidecar_fields(datatype, suffix)`,
+`dataset_description_fields()`, `field_applies(field, datatype, suffix)`.
+
+It shares the machinery below rather than duplicating it. It builds a synthetic
+context (Layer 3) describing the kind of file, evaluates the same rule selectors
+against it with the same evaluator (Layer 4), and reads requirement levels
+through the same `rules.engine.level_of` the rule engine uses (Layer 5). Sharing
+is the whole point: a tool that fills metadata and a tool that checks it must not
+hold different beliefs about the standard.
+
+It differs from validation in exactly one way, and deliberately. The validator
+skips a rule it cannot determine, because guessing would produce a false positive
+(section 13). Introspection reports such a field and marks it `conditional`,
+because hiding a field that does apply is worse for a form than showing one that
+might not. What must NOT follow from that charity is another modality's fields
+leaking in, so two inferences are drawn from the schema to keep the answer
+honest: an entity the datatype may not carry makes a presence test determinately
+false, and a gate on a sidecar key that no applicable rule could declare
+(`sidecar.MTState == true`, which no EEG sidecar can ever satisfy) is
+determinately false too. Both fall back to the charitable reading when the schema
+does not say.
+
+Full API and rationale: [schema introspection](schema-introspection.md).
+
 ---
 
 ## 8. Layer 2: indexing the files
@@ -747,6 +777,14 @@ One refinement keeps this correct:
 
 - **Conditional levels.** A note like "required if `X` is `Y`" is honoured: the
   level is raised only when the sidecar actually has `X` equal to `Y`.
+
+The two steps are separate functions: `level_of` resolves the requirement level
+(including that conditional refinement) and the table above maps it to a
+severity. They were once a single function returning only the severity, which
+lost information the mapping cannot recover: `optional` and `prohibited` are both
+`ignore`, so anything reading a level back out of a severity got those two wrong.
+The introspection API needs the level itself, so it reads `level_of` directly and
+the validator's behaviour is unchanged.
 
 These field rules are applied on derivative datasets too: the reference validator
 reports the same required and recommended fields regardless of `DatasetType`, so

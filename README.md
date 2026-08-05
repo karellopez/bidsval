@@ -125,6 +125,31 @@ evaluate_string("nifti_header.dim[0] == 3", {"nifti_header": {"dim": [4]}}) # Fa
 bidsval eval "suffix == 'T1w'" --context '{"suffix": "T1w"}'
 ```
 
+## Ask what BIDS declares for a kind of file
+
+Validation answers "is this dataset correct", which needs the dataset to exist.
+The same schema can answer the earlier question a metadata form or a conversion
+template asks: what does BIDS declare for a file of this kind, at what level, of
+what type.
+
+```python
+from bidsval import schema
+
+for field in schema.sidecar_fields("pet", "pet"):
+    if field.is_required:
+        print(field.name, field.type, field.unit, field.description[:60])
+
+schema.field_applies("EEGReference", "eeg", "eeg")     # True
+schema.field_applies("EEGReference", "anat", "T1w")    # False
+
+{f.name: f.level for f in schema.dataset_description_fields()}["Name"]  # "required"
+```
+
+This is not a lookup of `rules.sidecars.<datatype>`. BIDS files sidecar rules by
+selector expression, so most MRI metadata sits under `modality == "mri"` and a
+datatype-keyed reading finds 6 fields for `anat/T1w` where the schema declares 76.
+See [schema introspection](https://github.com/karellopez/bidsval/blob/main/docs/schema-introspection.md).
+
 ## How it works
 
 - The schema is the engine. The BIDS schema expresses validation logic as
@@ -145,7 +170,7 @@ bidsval eval "suffix == 'T1w'" --context '{"suffix": "T1w"}'
 
 | Module | Responsibility |
 |---|---|
-| `bidsval.schema` | Resolve a selector to one schema object; read BIDS vocabulary from it. The only version-aware code. |
+| `bidsval.schema` | Resolve a selector to one schema object; read BIDS vocabulary from it; answer what the standard declares for a kind of file. The only version-aware code. |
 | `bidsval.files` | Index a dataset's files (`FileTree`). |
 | `bidsval.context` | Build the per-file context: entities, datatype, inheritance-merged sidecar, associated files, loaded content. |
 | `bidsval.expr` | Evaluate BIDS schema expressions against a context. |
@@ -186,6 +211,7 @@ The docs live in [`docs/`](https://github.com/karellopez/bidsval/tree/main/docs)
 - [CLI reference](https://github.com/karellopez/bidsval/blob/main/docs/cli-reference.md) - every command and option, with examples and exit codes.
 - [schema selection](https://github.com/karellopez/bidsval/blob/main/docs/schema-selection.md) - the single `--schema` selector.
 - [output formats](https://github.com/karellopez/bidsval/blob/main/docs/output-formats.md) - `--out-type`, `--out-dir`, `--show`.
+- [schema introspection](https://github.com/karellopez/bidsval/blob/main/docs/schema-introspection.md) - what BIDS declares for a kind of file, before one exists.
 - [how it works](https://github.com/karellopez/bidsval/blob/main/docs/internals.md) - the complete technical reference: design, dependencies, every layer, flowcharts, and a glossary.
 - [comparison vs the Deno reference validator](https://github.com/karellopez/bidsval/blob/main/docs/comparison-vs-deno.md) - coverage, results, and the no-false-positives evidence.
 

@@ -263,22 +263,53 @@ def _eval_fields(
         )
 
 
-def _field_severity(requirement: Any, context: Mapping[str, Any]) -> Severity:
-    """Resolve a field requirement (a level string or a level object) to a severity."""
+def level_of(requirement: Any, context: Mapping[str, Any] | None = None) -> str:
+    """Resolve a schema field requirement to its BIDS requirement level.
+
+    A requirement is either a bare level string (``"required"``) or an object
+    carrying ``level`` plus an optional ``level_addendum`` that raises the level
+    conditionally, e.g. *"required if `MTState` is `true`"*. When ``context``
+    carries the sidecar being checked, such a condition is evaluated against it;
+    without a context the unconditional level is returned, which is what a
+    caller asking "what does the standard say about this field in general"
+    wants.
+
+    Returns ``"optional"`` for anything unrecognised, because an unknown
+    requirement must not be reported as a problem.
+
+    Kept separate from :func:`field_severity` on purpose. Level is what the
+    standard says about a field; severity is how bad one particular finding is.
+    Validation needs the second, but a form or an editor needs the first, and
+    collapsing them loses information that cannot be recovered afterwards.
+    """
     if isinstance(requirement, str):
-        return _LEVEL_TO_SEVERITY.get(requirement, Severity.IGNORE)
+        return requirement if requirement in _LEVEL_TO_SEVERITY else "optional"
+
     if isinstance(requirement, Mapping):
-        severity = _LEVEL_TO_SEVERITY.get(requirement.get("level"), Severity.IGNORE)
+        level = requirement.get("level")
+        level = level if level in _LEVEL_TO_SEVERITY else "optional"
+
         addendum = requirement.get("level_addendum")
-        if addendum:
+        if addendum and context is not None:
             match = _ADDENDUM_RE.search(str(addendum))
             if match:
                 conditional_level, key, value = match.groups()
                 sidecar = context.get("sidecar") or {}
                 if isinstance(sidecar, Mapping) and str(sidecar.get(key)) == value:
-                    severity = _LEVEL_TO_SEVERITY.get(conditional_level, severity)
-        return severity
-    return Severity.IGNORE
+                    if conditional_level in _LEVEL_TO_SEVERITY:
+                        level = conditional_level
+        return level
+
+    return "optional"
+
+
+def field_severity(requirement: Any, context: Mapping[str, Any]) -> Severity:
+    """Severity for a MISSING field, derived from its resolved level."""
+    return _LEVEL_TO_SEVERITY.get(level_of(requirement, context), Severity.IGNORE)
+
+
+# Historical private name, kept so existing call sites and tests keep working.
+_field_severity = field_severity
 
 
 def _missing_field_issue(

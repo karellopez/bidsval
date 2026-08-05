@@ -10,6 +10,7 @@ a whole dataset, a single subject, a single file, or a single expression.
 - [CLI reference](cli-reference.md) - every command and option, with examples and exit codes.
 - [Schema selection](schema-selection.md) - choosing a schema (the single `--schema` selector).
 - [Output formats](output-formats.md) - `--out-type`, `--out-dir`, `--show`.
+- [Schema introspection](schema-introspection.md) - what BIDS declares for a kind of file, before one exists: the API a metadata form or conversion template needs.
 - [How it works](internals.md) - the complete technical reference: design, dependencies, every layer, flowcharts, and a glossary.
 - [Comparison vs the Deno reference validator](comparison-vs-deno.md) - coverage, results, and the no-false-positives evidence.
 
