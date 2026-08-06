@@ -42,6 +42,7 @@ schema.sidecar_fields(
     schema=None,                 # any --schema selector; None = bundled default
     entities=None,               # {"task": "rest", "ce": "gad"}
     sidecar=None,                # values already known, to resolve conditionals
+    dataset_root=None,           # a real dataset, to settle dataset-gated rules
 )  # -> list[FieldSpec]
 ```
 
@@ -69,6 +70,8 @@ by long name (`ceagent`) and writes its selectors with the short one
 (`.edf` for EEG, `.fif` for MEG, `.nii.gz` for MRI and PET). It is worth knowing
 that this is not cosmetic: a great many rules select on the extension, so
 labelling an EEG recording `.nii.gz` makes every NIfTI-only rule apply to it.
+
+`dataset_root` is described under [Pointing at a real dataset](#pointing-at-a-real-dataset).
 
 ### `FieldSpec`
 
@@ -114,6 +117,51 @@ speculative.
  if f.level == "required" and not f.speculative]        # [] - dwi requires none
 ```
 
+## Pointing at a real dataset
+
+Some rules are gated on the dataset rather than the file. `Genetics` is required
+only of a dataset that ships a `genetic_info.json`; `Authors` is recommended
+only while there is NO `CITATION.cff`; the derivative fields apply only when
+`DatasetType` says derivative. None of that can be answered from a datatype and
+a suffix, so without a dataset those fields come back `speculative`.
+
+Pass `dataset_root` and they become ordinary questions:
+
+```python
+# No genetic_info.json in the tree: the field is not offered at all.
+spec = {f.name: f for f in schema.dataset_description_fields(dataset_root=root)}
+"Genetics" in spec                       # False
+
+# Add genetic_info.json and it is a real requirement, not a guess.
+spec = {f.name: f for f in schema.dataset_description_fields(dataset_root=root)}
+spec["Genetics"].level                   # "required"
+spec["Genetics"].speculative             # False
+```
+
+The answers then match the validator's exactly, because they are produced by the
+validator's own context builder reading the same tree. That matters more than it
+sounds: a form that shrugs while the validator raises an error sends a user
+hunting for a field the tool has already decided about, and a form that demands
+one the validator does not want sends them adding data BIDS never asked for.
+
+What stays out of reach even with a dataset is the per-FILE layer. A form is
+asked about a *kind* of file, so nothing can read that file's NIfTI header or
+its associated tables; selectors on `nifti_header.*` and `associations.*` remain
+unsettled and their fields remain `conditional`.
+
+### Caching, and when to drop it
+
+Reading a tree is per dataset, while a form asks per file, so the result is
+memoised. A long-running consumer must therefore say when the tree may have
+changed:
+
+```python
+schema.invalidate_dataset_cache()   # at the start of each validation run
+```
+
+Skip that and a `genetic_info.json` the user created a moment ago stays
+invisible until the process restarts.
+
 ## `dataset_description_fields(...)`
 
 The same, for `dataset_description.json`, which has no datatype and no suffix.
@@ -127,7 +175,9 @@ spec["Authors"]     # "optional", and conditional: the schema raises it to
                     # recommended when the dataset has no CITATION.cff
 ```
 
-Pass `dataset_description=` to resolve conditionals.
+Pass `dataset_description=` to resolve conditionals from values you already
+hold, and `dataset_root=` to settle the rules that depend on other files in the
+tree.
 
 ## `field_applies(field, datatype, suffix, ...)`
 
@@ -139,6 +189,8 @@ schema.field_applies("EEGReference", "eeg", "eeg")     # True
 schema.field_applies("EEGReference", "anat", "T1w")    # False
 schema.field_applies("TracerName", "pet", "pet")       # True
 ```
+
+It takes `dataset_root` too, on the same terms as `sidecar_fields`.
 
 ## Vocabulary helpers
 
@@ -187,11 +239,16 @@ caller supplied.
 
 ## What counts as unsettled
 
-Selectors that cannot be determined without a real file (`nifti_header.*`,
-`associations.*`, `dataset.*`) do not veto a rule: the field is reported and
-marked `conditional`. That is the correct trade for this question. Over-reporting
-a field a form might not need costs the user a glance; under-reporting one hides
-a requirement until the validator rejects the dataset.
+Selectors that cannot be determined do not veto a rule: the field is reported
+and marked `conditional`. That is the correct trade for this question.
+Over-reporting a field a form might not need costs the user a glance;
+under-reporting one hides a requirement until the validator rejects the dataset.
+
+Which selectors those are depends on what the caller supplied. `nifti_header.*`
+and `associations.*` are always out of reach, because a form is asked about a
+kind of file rather than one file. `dataset.*` and `exists(...)` are out of
+reach only when no `dataset_root` was given; with one they are answered from the
+tree, exactly as the validator answers them.
 
 Two kinds of selector look unsettled and are not, and reading them charitably
 leaks one modality's fields into another's form:

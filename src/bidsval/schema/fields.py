@@ -22,10 +22,11 @@ from __future__ import annotations
 import re
 from collections.abc import Iterator, Mapping
 from dataclasses import dataclass, replace
+from functools import lru_cache
 from typing import Any
 
 from ..expr import EvaluationError, evaluate_string
-from ..expr.functions import truthy
+from ..expr.functions import EXISTS_RESOLVER_KEY, truthy
 from ..rules.engine import level_of
 from . import introspect
 from .resolve import SchemaSelector, resolve
@@ -42,6 +43,11 @@ __all__ = [
 # mentioning one of these is never grounds for exclusion; the rule is reported
 # as conditionally applicable instead.
 _UNKNOWABLE_RE = re.compile(r"\b(dataset|nifti_header|associations)\b")
+
+# The same, for a caller that supplied a real dataset tree. Only the per-FILE
+# layers remain out of reach: a form is asked about a kind of file, so nothing
+# can read that file's NIfTI header or its associated tables.
+_FILE_ONLY_RE = re.compile(r"\b(nifti_header|associations)\b")
 
 # `sidecar` is deliberately NOT in that list. Sidecar selectors are evaluated
 # against the sidecar the caller supplied, or against an empty one, which is
@@ -128,6 +134,7 @@ def sidecar_fields(
     schema: SchemaSelector | None = None,
     entities: Mapping[str, str] | None = None,
     sidecar: Mapping[str, Any] | None = None,
+    dataset_root: Any = None,
 ) -> list[FieldSpec]:
     """Every sidecar metadata field BIDS declares for ``datatype``/``suffix``.
 
@@ -149,6 +156,62 @@ def sidecar_fields(
     its fields from ``rules.sidecars.mri``. Reading only the datatype key is
     the mistake this function exists to prevent.
     """
+    if entities is None and sidecar is None and dataset_root is None:
+        # The overwhelmingly common call, and an expensive one: every rule in
+        # the schema is evaluated against a synthetic context. A table asks it
+        # once per cell per repaint, so without memoisation a viewport of forty
+        # rows spends over a second deciding which columns to show. The answer
+        # depends only on the arguments and on an immutable schema, so it can
+        # be remembered.
+        return list(_sidecar_fields_cached(datatype, suffix, extension, schema))
+    if entities is None and sidecar is None:
+        # Still cacheable: the answer depends on the dataset, not the caller.
+        return list(
+            _sidecar_fields_with_dataset(datatype, suffix, extension, schema, str(dataset_root))
+        )
+    return _sidecar_fields_uncached(
+        datatype, suffix, extension=extension, schema=schema,
+        entities=entities, sidecar=sidecar, dataset_root=dataset_root,
+    )
+
+
+@lru_cache(maxsize=2048)
+def _sidecar_fields_with_dataset(
+    datatype: str, suffix: str, extension: str | None, schema: Any, dataset_root: str,
+) -> tuple[FieldSpec, ...]:
+    return tuple(
+        _sidecar_fields_uncached(
+            datatype, suffix, extension=extension, schema=schema,
+            dataset_root=dataset_root,
+        )
+    )
+
+
+@lru_cache(maxsize=2048)
+def _sidecar_fields_cached(
+    datatype: str, suffix: str, extension: str | None, schema: Any,
+) -> tuple[FieldSpec, ...]:
+    """Memoised :func:`sidecar_fields` for the no-context case.
+
+    Keyed on the schema selector too, so asking about two BIDS versions in one
+    process cannot cross-contaminate. FieldSpec is frozen, so handing out the
+    same objects repeatedly is safe; the caller gets a fresh list.
+    """
+    return tuple(
+        _sidecar_fields_uncached(datatype, suffix, extension=extension, schema=schema)
+    )
+
+
+def _sidecar_fields_uncached(
+    datatype: str,
+    suffix: str,
+    *,
+    extension: str | None = None,
+    schema: SchemaSelector | None = None,
+    entities: Mapping[str, str] | None = None,
+    sidecar: Mapping[str, Any] | None = None,
+    dataset_root: Any = None,
+) -> list[FieldSpec]:
     _SEEN.clear()
     ns = resolve(schema)
     entities_supplied = entities is not None
@@ -160,16 +223,21 @@ def sidecar_fields(
         entities = _required_entities(ns, datatype, suffix)
     if extension is None:
         extension = _default_extension(ns, datatype, suffix)
-    context = _context_for(ns, datatype, suffix, extension, entities, sidecar)
+    facts = _dataset_facts(str(dataset_root), schema) if dataset_root else None
+    context = _context_for(
+        ns, datatype, suffix, extension, entities, sidecar, facts,
+    )
     known_concrete = sidecar is not None
     allowed = _allowed_entities(ns, datatype, suffix)
 
     # Which sidecar keys could this kind of file carry at all. Computed first,
     # because a rule gated on `sidecar.MTState` is unreachable when no rule
     # that applies here can declare MTState in the first place.
+    dataset_known = facts is not None
     reachable = _reachable_fields(
         ns, context, entities_supplied=entities_supplied,
         sidecar_supplied=known_concrete, allowed_entities=allowed,
+        dataset_known=dataset_known,
     )
 
     out: dict[str, FieldSpec] = {}
@@ -181,6 +249,7 @@ def sidecar_fields(
             sidecar_supplied=known_concrete,
             allowed_entities=allowed,
             reachable=reachable,
+            dataset_known=dataset_known,
         )
         if applicability == "never":
             continue
@@ -193,6 +262,7 @@ def dataset_description_fields(
     *,
     schema: SchemaSelector | None = None,
     dataset_description: Mapping[str, Any] | None = None,
+    dataset_root: Any = None,
 ) -> list[FieldSpec]:
     """Every field BIDS declares for ``dataset_description.json``.
 
@@ -206,6 +276,7 @@ def dataset_description_fields(
     _SEEN.clear()
     ns = resolve(schema)
     supplied = dataset_description is not None
+    facts = _dataset_facts(str(dataset_root), schema) if dataset_root else None
     context: dict[str, Any] = {
         # Selectors identify the file by path, and several sibling rules under
         # rules.dataset_metadata describe OTHER files (genetic_info.json, an
@@ -217,8 +288,9 @@ def dataset_description_fields(
         "json": dict(dataset_description or {}),
         "sidecar": {},
         "entities": {},
-        "dataset": {},
+        "dataset": (facts[0] if facts else {}),
         "schema": ns,
+        **({EXISTS_RESOLVER_KEY: facts[1]} if facts and facts[1] else {}),
     }
 
     rules = _namespace_get(ns, "rules", "dataset_metadata")
@@ -227,7 +299,10 @@ def dataset_description_fields(
         rule = _as_mapping(_get(rules, rule_name))
         if "fields" not in rule:
             continue
-        state = _rule_applies(rule, context, sidecar_supplied=supplied)
+        state = _rule_applies(
+            rule, context, sidecar_supplied=supplied,
+            dataset_known=facts is not None,
+        )
         if state == "never":
             continue
         for spec, spec_state in _fields_of(
@@ -244,6 +319,7 @@ def field_applies(
     *,
     extension: str | None = None,
     schema: SchemaSelector | None = None,
+    dataset_root: Any = None,
 ) -> bool:
     """True if BIDS declares ``field`` for this kind of file.
 
@@ -251,10 +327,77 @@ def field_applies(
     ``PowerLineFrequency`` mean anything for an anatomical scan (no), or
     ``TracerName`` for a MEG recording (no).
     """
-    return any(
-        spec.name == field
-        for spec in sidecar_fields(datatype, suffix, extension=extension, schema=schema)
+    return field in _field_names(
+        datatype, suffix, extension, schema, str(dataset_root) if dataset_root else "",
     )
+
+
+@lru_cache(maxsize=2048)
+def _field_names(
+    datatype: str, suffix: str, extension: str | None, schema: Any,
+    dataset_root: str = "",
+) -> frozenset[str]:
+    """The field names for a kind of file, as a set.
+
+    :func:`field_applies` is asked once per cell per repaint by a table, so it
+    answers from a set rather than rescanning a list of eighty specs.
+    """
+    return frozenset(
+        spec.name
+        for spec in sidecar_fields(
+            datatype, suffix, extension=extension, schema=schema,
+            dataset_root=dataset_root or None,
+        )
+    )
+
+
+# ----------------------------------------------------------------------
+# Dataset facts: what a real tree on disk settles
+# ----------------------------------------------------------------------
+
+
+@lru_cache(maxsize=8)
+def _dataset_facts(root: str, schema: Any) -> tuple[Any, Any] | None:
+    """``(dataset_context, exists_resolver)`` for a dataset on disk.
+
+    Some rules are gated on the DATASET rather than the file: ``Genetics`` is
+    required only when ``genetic_info.json`` is present, and the derivative
+    fields only when ``DatasetType`` says derivative. Without a tree those are
+    unanswerable, and the field comes back speculative. With one they are
+    ordinary questions, and the answer then matches the validator's exactly,
+    which is the point: a form and a validator disagreeing about the same
+    dataset is the drift this namespace exists to remove.
+
+    Reuses the validator's own :class:`ContextBuilder` rather than restating
+    how a dataset context is assembled, so the two cannot drift.
+
+    Cached because a form asks per file while the answer is per dataset.
+    :func:`invalidate_dataset_cache` drops it; call that when the tree may have
+    changed, which for a consumer means at the start of each validation run.
+    """
+    from ..context.builder import ContextBuilder
+    from ..files.tree import FileTree
+
+    try:
+        tree = FileTree(root)
+        builder = ContextBuilder(resolve(schema), tree)
+        anchor = tree.get("dataset_description.json")
+        resolver = builder._make_exists_resolver(anchor, {}) if anchor else None
+        return builder._dataset, resolver
+    except Exception:
+        # An unreadable or half-written tree must not break a form. Fall back
+        # to the context-free answer, which over-reports rather than hides.
+        return None
+
+
+def invalidate_dataset_cache() -> None:
+    """Forget what was read from disk about any dataset.
+
+    A consumer that keeps a process alive across edits (an editor, a GUI) must
+    call this when the tree may have changed, or a file added since the last
+    call stays invisible.
+    """
+    _dataset_facts.cache_clear()
 
 
 # ----------------------------------------------------------------------
@@ -269,6 +412,7 @@ def _context_for(
     extension: str,
     entities: Mapping[str, str] | None,
     sidecar: Mapping[str, Any] | None,
+    facts: tuple[Any, Any] | None = None,
 ) -> dict[str, Any]:
     """A synthetic evaluation context describing a file of this kind."""
     # Accept either spelling from the caller and evaluate against both, the
@@ -285,7 +429,9 @@ def _context_for(
         "modality": introspect.modality_for(ns, datatype),
         "entities": expanded,
         "sidecar": dict(sidecar or {}),
-        "dataset": {},
+        # A real tree settles the dataset-gated rules; without one this stays
+        # empty and those rules come back speculative.
+        "dataset": (facts[0] if facts else {}),
         # The schema itself: selectors reach into it for controlled vocabularies,
         # e.g. `intersects(schema.objects.enums._StandardTemplateCoordSys.enum,
         # [entities.space])`. Omitting it makes every such lookup empty, which
@@ -294,6 +440,7 @@ def _context_for(
         "schema": ns,
         "path": f"/sub-01/{datatype}/sub-01_{suffix}{extension}",
         "size": 1,
+        **({EXISTS_RESOLVER_KEY: facts[1]} if facts and facts[1] else {}),
     }
 
 
@@ -392,6 +539,7 @@ def _reachable_fields(
     entities_supplied: bool,
     sidecar_supplied: bool,
     allowed_entities: set[str],
+    dataset_known: bool = False,
 ) -> set[str]:
     """Sidecar keys this kind of file could carry, ignoring sidecar gates.
 
@@ -412,6 +560,7 @@ def _reachable_fields(
             entities_supplied=entities_supplied,
             sidecar_supplied=sidecar_supplied,
             allowed_entities=allowed_entities,
+            dataset_known=dataset_known,
         )
         if state != "never":
             out.update(_as_mapping(rule.get("fields", {})).keys())
@@ -448,6 +597,7 @@ def _rule_applies(
     sidecar_supplied: bool = False,
     allowed_entities: set[str] | None = None,
     reachable: set[str] | None = None,
+    dataset_known: bool = False,
 ) -> str:
     """How surely does this rule apply to the kind of file being described?
 
@@ -489,8 +639,13 @@ def _rule_applies(
     state = "certain"
     for selector in rule.get("selectors", []) or []:
         text = str(selector)
+        # `dataset` and `exists(...)` are only unanswerable when no tree was
+        # supplied. Given one, they are ordinary questions and their answers
+        # are as authoritative as the validator's, which is what stops a form
+        # and a validator disagreeing about the same dataset.
+        unknowable = _FILE_ONLY_RE if dataset_known else _UNKNOWABLE_RE
         invented = bool(
-            _UNKNOWABLE_RE.search(text)
+            unknowable.search(text)
             or (
                 _SIDECAR_RE.search(text)
                 and not sidecar_supplied

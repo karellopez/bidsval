@@ -20,6 +20,7 @@ from .fields import (
     FieldSpec,
     dataset_description_fields,
     field_applies,
+    invalidate_dataset_cache,
     sidecar_fields,
 )
 from .introspect import (
@@ -48,6 +49,7 @@ __all__ = [
     "sidecar_fields",
     "dataset_description_fields",
     "field_applies",
+    "invalidate_dataset_cache",
     "datatypes",
     "suffixes",
     "extensions",
